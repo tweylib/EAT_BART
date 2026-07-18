@@ -7,3 +7,4 @@ pyyaml
 pandas
 numpy
 pytest
+safetensors
