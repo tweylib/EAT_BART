@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, BartForConditionalGeneration
 
 from eat_bart.data.dataset import MentalHealthResponseDataset, split_dataset
 from eat_bart.data.emotion_features import tokenize_texts_with_emotion_features
@@ -36,7 +36,10 @@ def run_generation(config: dict[str, Any]) -> Path:
 
     dataset_path = _require_file(data_config["dataset_path"], "dataset CSV")
     lexicon_path = _require_file(data_config["nrc_lexicon_path"], "NRC lexicon CSV")
-    checkpoint_path = _require_file(evaluation_config["checkpoint_path"], "EAT-BART checkpoint")
+    model_source = evaluation_config.get("model_source", "eat_checkpoint")
+    checkpoint_path = None
+    if model_source == "eat_checkpoint":
+        checkpoint_path = _require_file(evaluation_config["checkpoint_path"], "EAT-BART checkpoint")
 
     dataset = MentalHealthResponseDataset.from_csv(
         path=dataset_path,
@@ -75,7 +78,17 @@ def run_generation(config: dict[str, Any]) -> Path:
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = load_eat_bart_checkpoint(checkpoint_path, eat_config=eat_config).to(device)
+    if model_source == "eat_checkpoint":
+        model = load_eat_bart_checkpoint(checkpoint_path, eat_config=eat_config).to(device)
+        use_emotion_encoder = True
+    elif model_source == "pretrained_bart":
+        model = BartForConditionalGeneration.from_pretrained(
+            model_name,
+            local_files_only=local_files_only,
+        ).to(device)
+        use_emotion_encoder = False
+    else:
+        raise ValueError(f"Unsupported evaluation model_source: {model_source}")
     model.eval()
 
     rows = _generate_rows(
@@ -86,6 +99,7 @@ def run_generation(config: dict[str, Any]) -> Path:
         device=device,
         data_config=data_config,
         evaluation_config=evaluation_config,
+        use_emotion_encoder=use_emotion_encoder,
     )
 
     output_path = Path(evaluation_config.get("output_path", "reports/eat_bart_generations.csv"))
@@ -102,6 +116,7 @@ def _generate_rows(
     device: torch.device,
     data_config: dict[str, Any],
     evaluation_config: dict[str, Any],
+    use_emotion_encoder: bool,
 ) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     batch_size = int(evaluation_config.get("batch_size", 4))
@@ -124,18 +139,24 @@ def _generate_rows(
         encoder_emotion_features = encoder_emotion_features.to(device)
 
         with torch.no_grad():
-            encoder_outputs = model.model.encoder(
-                input_ids=encoded["input_ids"],
-                attention_mask=encoded["attention_mask"],
-                encoder_emotion_features=encoder_emotion_features,
-            )
-            generated_ids = model.generate(
-                encoder_outputs=encoder_outputs,
-                attention_mask=encoded["attention_mask"],
-                max_new_tokens=int(evaluation_config.get("max_new_tokens", 128)),
-                num_beams=int(evaluation_config.get("num_beams", 4)),
-                do_sample=bool(evaluation_config.get("do_sample", False)),
-            )
+            generation_kwargs = _build_generation_kwargs(evaluation_config)
+            if use_emotion_encoder:
+                encoder_outputs = model.model.encoder(
+                    input_ids=encoded["input_ids"],
+                    attention_mask=encoded["attention_mask"],
+                    encoder_emotion_features=encoder_emotion_features,
+                )
+                generated_ids = model.generate(
+                    encoder_outputs=encoder_outputs,
+                    attention_mask=encoded["attention_mask"],
+                    **generation_kwargs,
+                )
+            else:
+                generated_ids = model.generate(
+                    input_ids=encoded["input_ids"],
+                    attention_mask=encoded["attention_mask"],
+                    **generation_kwargs,
+                )
 
         predictions = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
         for question, reference, prediction in zip(questions, references, predictions, strict=True):
@@ -148,6 +169,30 @@ def _generate_rows(
             )
 
     return rows
+
+
+def _build_generation_kwargs(evaluation_config: dict[str, Any]) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "max_new_tokens": int(evaluation_config.get("max_new_tokens", 128)),
+        "num_beams": int(evaluation_config.get("num_beams", 4)),
+        "do_sample": bool(evaluation_config.get("do_sample", False)),
+    }
+    optional_keys = {
+        "min_new_tokens": int,
+        "repetition_penalty": float,
+        "no_repeat_ngram_size": int,
+        "length_penalty": float,
+        "early_stopping": bool,
+        "temperature": float,
+        "top_p": float,
+        "top_k": int,
+    }
+    for key, caster in optional_keys.items():
+        value = evaluation_config.get(key)
+        if value is not None:
+            kwargs[key] = caster(value)
+
+    return kwargs
 
 
 def _write_generation_rows(output_path: Path, rows: list[dict[str, str]]) -> None:

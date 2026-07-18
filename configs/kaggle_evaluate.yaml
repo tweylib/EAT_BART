@@ -1,6 +1,7 @@
 inherits: configs/kaggle.yaml
 
 evaluation:
+  model_source: eat_checkpoint
   checkpoint_path: /kaggle/working/models/eat_bart
   output_path: /kaggle/working/reports/eat_bart_generations.csv
   max_eval_examples: 50
@@ -8,3 +9,7 @@ evaluation:
   max_new_tokens: 128
   num_beams: 4
   do_sample: false
+  repetition_penalty: 1.2
+  no_repeat_ngram_size: 3
+  length_penalty: 1.0
+  early_stopping: true

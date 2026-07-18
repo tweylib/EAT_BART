@@ -1,10 +1,9 @@
-inherits: configs/default.yaml
+inherits: configs/kaggle.yaml
 
 evaluation:
-  model_source: eat_checkpoint
-  checkpoint_path: models/eat_bart
-  output_path: reports/eat_bart_generations.csv
-  max_eval_examples: 50
+  model_source: pretrained_bart
+  output_path: /kaggle/working/reports/bart_base_generations.csv
+  max_eval_examples: 20
   batch_size: 4
   max_new_tokens: 128
   num_beams: 4
