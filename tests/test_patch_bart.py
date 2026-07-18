@@ -75,6 +75,44 @@ def test_patched_bart_forward_accepts_encoder_and_decoder_emotion_features() -> 
     assert tuple(output.logits.shape) == (1, 3, 99)
 
 
+def test_patched_bart_generate_accepts_precomputed_emotion_encoder_outputs() -> None:
+    config = BartConfig(
+        d_model=16,
+        encoder_layers=1,
+        decoder_layers=1,
+        encoder_attention_heads=2,
+        decoder_attention_heads=2,
+        encoder_ffn_dim=32,
+        decoder_ffn_dim=32,
+        vocab_size=99,
+        pad_token_id=1,
+        bos_token_id=0,
+        eos_token_id=2,
+        decoder_start_token_id=2,
+        forced_eos_token_id=2,
+    )
+    model = BartForConditionalGeneration(config)
+    patch_bart_self_attention(model)
+
+    input_ids = torch.tensor([[0, 5, 6, 2]])
+    attention_mask = torch.ones_like(input_ids)
+    encoder_emotion_features = torch.zeros(1, 4, 8)
+    encoder_outputs = model.model.encoder(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        encoder_emotion_features=encoder_emotion_features,
+    )
+
+    generated = model.generate(
+        encoder_outputs=encoder_outputs,
+        attention_mask=attention_mask,
+        max_new_tokens=3,
+        num_beams=1,
+    )
+
+    assert generated.size(0) == 1
+
+
 def test_build_eat_bart_model_from_config_patches_self_attention() -> None:
     config = BartConfig(
         d_model=16,

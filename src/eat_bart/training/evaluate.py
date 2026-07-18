@@ -124,10 +124,14 @@ def _generate_rows(
         encoder_emotion_features = encoder_emotion_features.to(device)
 
         with torch.no_grad():
-            generated_ids = model.generate(
+            encoder_outputs = model.model.encoder(
                 input_ids=encoded["input_ids"],
                 attention_mask=encoded["attention_mask"],
                 encoder_emotion_features=encoder_emotion_features,
+            )
+            generated_ids = model.generate(
+                encoder_outputs=encoder_outputs,
+                attention_mask=encoded["attention_mask"],
                 max_new_tokens=int(evaluation_config.get("max_new_tokens", 128)),
                 num_beams=int(evaluation_config.get("num_beams", 4)),
                 do_sample=bool(evaluation_config.get("do_sample", False)),
