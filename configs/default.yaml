@@ -1,6 +1,7 @@
 model:
   name: facebook/bart-base
   local_files_only: true
+  add_prefix_space: true
   emotion_dim: 8
   emotion_hidden_dim: 32
   alpha_init: 0.05

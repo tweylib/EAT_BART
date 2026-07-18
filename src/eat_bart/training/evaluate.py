@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from transformers import AutoTokenizer, BartForConditionalGeneration
+from transformers import BartForConditionalGeneration
 
 from eat_bart.data.dataset import MentalHealthResponseDataset, split_dataset
 from eat_bart.data.emotion_features import tokenize_texts_with_emotion_features
 from eat_bart.data.emotion_lexicon import load_nrc_lexicon
+from eat_bart.data.tokenizer import load_bart_tokenizer
 from eat_bart.modeling.eat_attention import EATAttentionConfig
 from eat_bart.modeling.eat_bart_model import DEFAULT_MODEL_NAME, load_eat_bart_checkpoint
 from eat_bart.training.train import _require_file
@@ -60,13 +61,11 @@ def run_generation(config: dict[str, Any]) -> Path:
 
     model_name = model_config.get("name", DEFAULT_MODEL_NAME)
     local_files_only = bool(model_config.get("local_files_only", False))
-    tokenizer = AutoTokenizer.from_pretrained(
+    tokenizer = load_bart_tokenizer(
         model_name,
-        use_fast=True,
         local_files_only=local_files_only,
+        add_prefix_space=bool(model_config.get("add_prefix_space", True)),
     )
-    if not tokenizer.is_fast:
-        raise ValueError("EAT-BART emotion alignment requires a fast Hugging Face tokenizer.")
 
     lexicon = load_nrc_lexicon(lexicon_path)
     eat_config = EATAttentionConfig(
