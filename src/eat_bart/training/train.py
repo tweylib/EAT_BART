@@ -122,6 +122,22 @@ def build_training_arguments(training_config: dict[str, Any]) -> Seq2SeqTraining
 def _require_file(path: str | Path, label: str) -> Path:
     resolved_path = Path(path)
     if not resolved_path.exists():
-        raise FileNotFoundError(f"Missing {label}: {resolved_path}")
+        available_files = _format_available_kaggle_files()
+        raise FileNotFoundError(f"Missing {label}: {resolved_path}{available_files}")
 
     return resolved_path
+
+
+def _format_available_kaggle_files() -> str:
+    kaggle_input = Path("/kaggle/input")
+    if not kaggle_input.exists():
+        return ""
+
+    files = sorted(str(path) for path in kaggle_input.rglob("*.csv"))
+    if not files:
+        return "\nNo CSV files were found under /kaggle/input."
+
+    visible_files = "\n".join(f"  - {path}" for path in files[:20])
+    extra_count = len(files) - 20
+    suffix = f"\n  ... and {extra_count} more CSV files" if extra_count > 0 else ""
+    return f"\nAvailable CSV files under /kaggle/input:\n{visible_files}{suffix}"
