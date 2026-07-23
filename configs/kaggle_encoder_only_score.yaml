@@ -1,0 +1,5 @@
+scoring:
+  input_path: /kaggle/working/reports/eat_bart_encoder_only_generations.csv
+  output_path: /kaggle/working/reports/eat_bart_encoder_only_metrics.csv
+  prediction_column: generated_response
+  reference_column: reference_response
