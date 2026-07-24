@@ -3,6 +3,7 @@ transformers
 datasets
 accelerate
 evaluate
+bert-score
 pyyaml
 pandas
 numpy

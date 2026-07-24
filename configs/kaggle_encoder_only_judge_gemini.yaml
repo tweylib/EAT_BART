@@ -1,0 +1,14 @@
+llm_judge:
+  input_path: /kaggle/working/reports/eat_bart_encoder_only_generations.csv
+  output_path: /kaggle/working/reports/eat_bart_encoder_only_llm_judge_gemini.csv
+  summary_output_path: /kaggle/working/reports/eat_bart_encoder_only_llm_judge_gemini_summary.csv
+  provider: gemini
+  model: gemini-2.5-flash
+  api_key_env: GEMINI_API_KEY
+  question_column: question
+  prediction_column: generated_response
+  reference_column: reference_response
+  max_examples: 50
+  sleep_seconds: 0.5
+  temperature: 0.0
+  timeout_seconds: 60
