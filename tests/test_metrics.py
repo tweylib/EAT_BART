@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import csv
+import json
 
 import pytest
 
-from eat_bart.training.metrics import compute_generation_metrics, score_generation_csv
+from eat_bart.training.metrics import (
+    compute_generation_metrics,
+    extract_validation_loss,
+    score_generation_csv,
+)
 
 
 def test_compute_generation_metrics_scores_exact_match_high() -> None:
@@ -15,10 +20,10 @@ def test_compute_generation_metrics_scores_exact_match_high() -> None:
 
     assert metrics["num_examples"] == 1.0
     assert metrics["empty_prediction_rate"] == 0.0
-    assert metrics["rouge_1_f1"] == pytest.approx(1.0)
-    assert metrics["rouge_2_f1"] == pytest.approx(1.0)
+    assert "bertscore_f1" in metrics
     assert metrics["rouge_l_f1"] == pytest.approx(1.0)
     assert metrics["bleu_4"] == pytest.approx(1.0)
+    assert metrics["distinct_2"] == pytest.approx(1.0)
 
 
 def test_compute_generation_metrics_treats_nan_string_as_empty() -> None:
@@ -58,3 +63,24 @@ def test_score_generation_csv_writes_metrics_file(tmp_path) -> None:
 
     assert output_path.exists()
     assert metrics["num_examples"] == 1.0
+
+
+def test_extract_validation_loss_reads_best_and_last_checkpoint_values(tmp_path) -> None:
+    checkpoint_dir = tmp_path / "checkpoint-10"
+    checkpoint_dir.mkdir()
+    state_path = checkpoint_dir / "trainer_state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "log_history": [
+                    {"eval_loss": 2.5, "epoch": 1},
+                    {"eval_loss": 1.5, "epoch": 2},
+                    {"eval_loss": 1.8, "epoch": 3},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert extract_validation_loss(tmp_path, mode="best") == pytest.approx(1.5)
+    assert extract_validation_loss(tmp_path, mode="last") == pytest.approx(1.8)

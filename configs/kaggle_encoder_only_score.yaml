@@ -3,3 +3,8 @@ scoring:
   output_path: /kaggle/working/reports/eat_bart_encoder_only_metrics.csv
   prediction_column: generated_response
   reference_column: reference_response
+  include_bertscore: true
+  bertscore_model_type: microsoft/deberta-xlarge-mnli
+  bertscore_batch_size: 8
+  validation_loss_path: /kaggle/working/models/eat_bart_encoder_only
+  validation_loss_mode: best

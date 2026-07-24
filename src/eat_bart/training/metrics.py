@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import csv
+import json
+import math
 import re
 from collections import Counter
 from pathlib import Path
@@ -16,12 +18,29 @@ def score_generation_csv(
     output_path: str | Path | None = None,
     prediction_column: str = "generated_response",
     reference_column: str = "reference_response",
+    include_bertscore: bool = False,
+    bertscore_model_type: str = "distilbert-base-uncased",
+    bertscore_batch_size: int = 16,
+    validation_loss_path: str | Path | None = None,
+    validation_loss_mode: str = "best",
 ) -> dict[str, float]:
     """Score a generation CSV and optionally write one-row metrics CSV."""
     rows = _read_generation_rows(input_path)
     predictions = [row.get(prediction_column, "") for row in rows]
     references = [row.get(reference_column, "") for row in rows]
-    metrics = compute_generation_metrics(predictions=predictions, references=references)
+    metrics = compute_generation_metrics(
+        predictions=predictions,
+        references=references,
+        include_bertscore=include_bertscore,
+        bertscore_model_type=bertscore_model_type,
+        bertscore_batch_size=bertscore_batch_size,
+    )
+
+    if validation_loss_path is not None:
+        metrics["validation_loss"] = extract_validation_loss(
+            validation_loss_path,
+            mode=validation_loss_mode,
+        )
 
     if output_path is not None:
         _write_metrics_csv(output_path, metrics)
@@ -32,6 +51,9 @@ def score_generation_csv(
 def compute_generation_metrics(
     predictions: list[str],
     references: list[str],
+    include_bertscore: bool = False,
+    bertscore_model_type: str = "distilbert-base-uncased",
+    bertscore_batch_size: int = 16,
 ) -> dict[str, float]:
     """Compute lightweight text-generation metrics.
 
@@ -42,45 +64,66 @@ def compute_generation_metrics(
         raise ValueError("predictions and references must have the same length.")
 
     if not predictions:
-        return {
+        metrics = {
             "num_examples": 0.0,
             "empty_prediction_rate": 0.0,
             "avg_prediction_tokens": 0.0,
             "avg_reference_tokens": 0.0,
-            "rouge_1_f1": 0.0,
-            "rouge_2_f1": 0.0,
-            "rouge_l_f1": 0.0,
+            "bertscore_f1": math.nan if include_bertscore else 0.0,
             "bleu_4": 0.0,
-            "distinct_1": 0.0,
+            "rouge_l_f1": 0.0,
             "distinct_2": 0.0,
         }
+        return metrics
 
     prediction_tokens = [_tokenize(text) for text in predictions]
     reference_tokens = [_tokenize(text) for text in references]
 
-    return {
+    metrics = {
         "num_examples": float(len(predictions)),
         "empty_prediction_rate": _mean(
             1.0 if len(tokens) == 0 else 0.0 for tokens in prediction_tokens
         ),
         "avg_prediction_tokens": _mean(len(tokens) for tokens in prediction_tokens),
         "avg_reference_tokens": _mean(len(tokens) for tokens in reference_tokens),
-        "rouge_1_f1": _mean(
-            _ngram_f1(prediction, reference, n=1)
-            for prediction, reference in zip(prediction_tokens, reference_tokens, strict=True)
-        ),
-        "rouge_2_f1": _mean(
-            _ngram_f1(prediction, reference, n=2)
-            for prediction, reference in zip(prediction_tokens, reference_tokens, strict=True)
-        ),
+        "bertscore_f1": math.nan,
+        "bleu_4": _corpus_bleu(prediction_tokens, reference_tokens, max_order=4),
         "rouge_l_f1": _mean(
             _rouge_l_f1(prediction, reference)
             for prediction, reference in zip(prediction_tokens, reference_tokens, strict=True)
         ),
-        "bleu_4": _corpus_bleu(prediction_tokens, reference_tokens, max_order=4),
-        "distinct_1": _distinct_n(prediction_tokens, n=1),
         "distinct_2": _distinct_n(prediction_tokens, n=2),
     }
+
+    if include_bertscore:
+        metrics["bertscore_f1"] = _compute_bertscore_f1(
+            predictions=predictions,
+            references=references,
+            model_type=bertscore_model_type,
+            batch_size=bertscore_batch_size,
+        )
+
+    return metrics
+
+
+def extract_validation_loss(checkpoint_path: str | Path, mode: str = "best") -> float:
+    """Extract validation loss from Hugging Face Trainer state files."""
+    states = _load_trainer_states(Path(checkpoint_path))
+    losses: list[float] = []
+    for state in states:
+        for log_entry in state.get("log_history", []):
+            if "eval_loss" in log_entry:
+                losses.append(float(log_entry["eval_loss"]))
+
+    if not losses:
+        return math.nan
+
+    if mode == "best":
+        return min(losses)
+    if mode == "last":
+        return losses[-1]
+
+    raise ValueError("validation_loss_mode must be 'best' or 'last'.")
 
 
 def _read_generation_rows(input_path: str | Path) -> list[dict[str, str]]:
@@ -95,6 +138,67 @@ def _write_metrics_csv(output_path: str | Path, metrics: dict[str, float]) -> No
         writer = csv.DictWriter(file, fieldnames=list(metrics))
         writer.writeheader()
         writer.writerow(metrics)
+
+
+def _compute_bertscore_f1(
+    predictions: list[str],
+    references: list[str],
+    model_type: str,
+    batch_size: int,
+) -> float:
+    try:
+        from bert_score import score
+    except ImportError as error:
+        raise RuntimeError(
+            "BERTScore requires the bert-score package. "
+            "Install it with `pip install bert-score` or rerun `pip install -r requirements.txt`."
+        ) from error
+
+    normalized_predictions = [prediction if prediction.strip() else "." for prediction in predictions]
+    normalized_references = [reference if reference.strip() else "." for reference in references]
+    _, _, f1_scores = score(
+        normalized_predictions,
+        normalized_references,
+        model_type=model_type,
+        batch_size=batch_size,
+        verbose=False,
+    )
+    return float(f1_scores.mean().item())
+
+
+def _load_trainer_states(path: Path) -> list[dict[str, Any]]:
+    state_paths = _find_trainer_state_paths(path)
+    states = []
+    for state_path in state_paths:
+        with state_path.open("r", encoding="utf-8") as file:
+            states.append(json.load(file))
+
+    return states
+
+
+def _find_trainer_state_paths(path: Path) -> list[Path]:
+    if path.is_file():
+        return [path]
+
+    state_paths: list[Path] = []
+    direct_state_path = path / "trainer_state.json"
+    if direct_state_path.exists():
+        state_paths.append(direct_state_path)
+
+    checkpoint_state_paths = sorted(
+        path.glob("checkpoint-*/trainer_state.json"),
+        key=_trainer_state_sort_key,
+    )
+    state_paths.extend(checkpoint_state_paths)
+    return state_paths
+
+
+def _trainer_state_sort_key(path: Path) -> int:
+    checkpoint_name = path.parent.name
+    try:
+        return int(checkpoint_name.rsplit("-", maxsplit=1)[-1])
+    except ValueError:
+        return 0
 
 
 def _tokenize(text: Any) -> list[str]:

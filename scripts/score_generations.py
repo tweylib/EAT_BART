@@ -31,6 +31,14 @@ def main() -> None:
         output_path=scoring_config.get("output_path"),
         prediction_column=scoring_config.get("prediction_column", "generated_response"),
         reference_column=scoring_config.get("reference_column", "reference_response"),
+        include_bertscore=bool(scoring_config.get("include_bertscore", False)),
+        bertscore_model_type=scoring_config.get(
+            "bertscore_model_type",
+            "distilbert-base-uncased",
+        ),
+        bertscore_batch_size=int(scoring_config.get("bertscore_batch_size", 16)),
+        validation_loss_path=scoring_config.get("validation_loss_path"),
+        validation_loss_mode=scoring_config.get("validation_loss_mode", "best"),
     )
 
     for name, value in metrics.items():
