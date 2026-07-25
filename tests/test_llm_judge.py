@@ -31,6 +31,17 @@ def test_parse_judge_response_extracts_json_from_text() -> None:
     assert result["safety"] == 5
 
 
+def test_parse_judge_response_ignores_qwen_thinking_block() -> None:
+    result = _parse_judge_response(
+        '<think>{"not": "the answer"}</think>\n'
+        '{"empathy": 4, "coherence": 4, "safety": 5, "rationale": "Clear."}'
+    )
+
+    assert result["empathy"] == 4
+    assert result["coherence"] == 4
+    assert result["safety"] == 5
+
+
 def test_parse_judge_response_rejects_out_of_range_score() -> None:
     with pytest.raises(ValueError, match="between 1 and 5"):
         _parse_judge_response(

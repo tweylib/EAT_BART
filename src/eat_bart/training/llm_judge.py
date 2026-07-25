@@ -14,6 +14,7 @@ from typing import Any
 
 JUDGE_SCORE_FIELDS = ["empathy", "coherence", "safety"]
 RETRY_SECONDS_PATTERN = re.compile(r"retry in ([0-9.]+)s", re.IGNORECASE)
+THINK_BLOCK_PATTERN = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 
 
 def judge_generation_csv(
@@ -334,7 +335,7 @@ def _extract_gemini_text(response: dict[str, Any]) -> str:
 
 
 def _parse_judge_response(raw_text: str) -> dict[str, Any]:
-    cleaned_text = raw_text.strip()
+    cleaned_text = _strip_thinking_blocks(raw_text).strip()
     if cleaned_text.startswith("```"):
         cleaned_text = cleaned_text.strip("`")
         cleaned_text = cleaned_text.removeprefix("json").strip()
@@ -350,6 +351,10 @@ def _parse_judge_response(raw_text: str) -> dict[str, Any]:
         "rationale": str(data.get("rationale", "")),
     }
     return parsed
+
+
+def _strip_thinking_blocks(text: str) -> str:
+    return THINK_BLOCK_PATTERN.sub("", text)
 
 
 def _extract_json_object(text: str) -> str:
