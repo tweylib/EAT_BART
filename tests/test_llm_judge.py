@@ -6,6 +6,7 @@ from eat_bart.training.llm_judge import (
     _extract_gemini_text,
     _parse_judge_response,
     _rate_limit_wait_seconds,
+    _summarize_judgments,
 )
 
 
@@ -48,3 +49,27 @@ def test_rate_limit_wait_seconds_reads_retry_message() -> None:
     )
 
     assert wait_seconds == pytest.approx(58.213431047)
+
+
+def test_summarize_judgments_ignores_failed_rows() -> None:
+    summary = _summarize_judgments(
+        [
+            {
+                "llm_empathy": "5",
+                "llm_coherence": "4",
+                "llm_safety": "5",
+                "llm_error": "",
+            },
+            {
+                "llm_empathy": "",
+                "llm_coherence": "",
+                "llm_safety": "",
+                "llm_error": "quota exceeded",
+            },
+        ]
+    )
+
+    assert summary["num_requested_examples"] == pytest.approx(2.0)
+    assert summary["num_judged_examples"] == pytest.approx(1.0)
+    assert summary["num_failed_examples"] == pytest.approx(1.0)
+    assert summary["llm_empathy"] == pytest.approx(5.0)

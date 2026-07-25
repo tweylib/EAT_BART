@@ -32,6 +32,7 @@ def judge_generation_csv(
     timeout_seconds: int = 60,
     max_retries: int = 3,
     rate_limit_sleep_seconds: float = 65.0,
+    continue_on_error: bool = False,
 ) -> dict[str, float]:
     """Judge generated responses with a configured LLM provider."""
     provider = provider.lower()
@@ -42,19 +43,37 @@ def judge_generation_csv(
 
     judged_rows = []
     for index, row in enumerate(rows):
-        result = _judge_row(
-            row=row,
-            provider=provider,
-            model=model,
-            api_key=api_key,
-            question_column=question_column,
-            prediction_column=prediction_column,
-            reference_column=reference_column,
-            temperature=temperature,
-            timeout_seconds=timeout_seconds,
-            max_retries=max_retries,
-            rate_limit_sleep_seconds=rate_limit_sleep_seconds,
-        )
+        try:
+            result = _judge_row(
+                row=row,
+                provider=provider,
+                model=model,
+                api_key=api_key,
+                question_column=question_column,
+                prediction_column=prediction_column,
+                reference_column=reference_column,
+                temperature=temperature,
+                timeout_seconds=timeout_seconds,
+                max_retries=max_retries,
+                rate_limit_sleep_seconds=rate_limit_sleep_seconds,
+            )
+        except RuntimeError as error:
+            if not continue_on_error:
+                _write_outputs(
+                    output_path=output_path,
+                    summary_output_path=summary_output_path,
+                    judged_rows=judged_rows,
+                )
+                raise
+
+            result = {
+                "empathy": "",
+                "coherence": "",
+                "safety": "",
+                "rationale": "",
+                "error": str(error),
+            }
+
         judged_rows.append(
             {
                 "index": str(index),
@@ -64,17 +83,18 @@ def judge_generation_csv(
                 "llm_coherence": str(result["coherence"]),
                 "llm_safety": str(result["safety"]),
                 "llm_rationale": result.get("rationale", ""),
+                "llm_error": result.get("error", ""),
             }
+        )
+        _write_outputs(
+            output_path=output_path,
+            summary_output_path=summary_output_path,
+            judged_rows=judged_rows,
         )
         if sleep_seconds > 0:
             time.sleep(sleep_seconds)
 
-    summary = _summarize_judgments(judged_rows)
-    _write_rows(output_path, judged_rows)
-    if summary_output_path is not None:
-        _write_summary(summary_output_path, summary)
-
-    return summary
+    return _summarize_judgments(judged_rows)
 
 
 def _judge_row(
@@ -324,9 +344,14 @@ def _parse_score(data: dict[str, Any], field: str) -> int:
 
 
 def _summarize_judgments(rows: list[dict[str, str]]) -> dict[str, float]:
-    summary = {"num_judged_examples": float(len(rows))}
+    scored_rows = [row for row in rows if row.get("llm_error", "") == ""]
+    summary = {
+        "num_requested_examples": float(len(rows)),
+        "num_judged_examples": float(len(scored_rows)),
+        "num_failed_examples": float(len(rows) - len(scored_rows)),
+    }
     for field in JUDGE_SCORE_FIELDS:
-        values = [float(row[f"llm_{field}"]) for row in rows]
+        values = [float(row[f"llm_{field}"]) for row in scored_rows]
         summary[f"llm_{field}"] = sum(values) / len(values) if values else 0.0
 
     return summary
@@ -360,11 +385,23 @@ def _write_rows(output_path: str | Path, rows: list[dict[str, str]]) -> None:
         "llm_coherence",
         "llm_safety",
         "llm_rationale",
+        "llm_error",
     ]
     with path.open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _write_outputs(
+    output_path: str | Path,
+    summary_output_path: str | Path | None,
+    judged_rows: list[dict[str, str]],
+) -> None:
+    summary = _summarize_judgments(judged_rows)
+    _write_rows(output_path, judged_rows)
+    if summary_output_path is not None:
+        _write_summary(summary_output_path, summary)
 
 
 def _write_summary(output_path: str | Path, summary: dict[str, float]) -> None:

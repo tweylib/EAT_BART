@@ -42,6 +42,7 @@ def main() -> None:
         timeout_seconds=int(judge_config.get("timeout_seconds", 60)),
         max_retries=int(judge_config.get("max_retries", 3)),
         rate_limit_sleep_seconds=float(judge_config.get("rate_limit_sleep_seconds", 65.0)),
+        continue_on_error=bool(judge_config.get("continue_on_error", False)),
     )
 
     for name, value in summary.items():

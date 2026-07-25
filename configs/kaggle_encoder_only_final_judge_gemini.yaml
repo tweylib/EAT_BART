@@ -14,3 +14,4 @@ llm_judge:
   timeout_seconds: 60
   max_retries: 3
   rate_limit_sleep_seconds: 65.0
+  continue_on_error: true
