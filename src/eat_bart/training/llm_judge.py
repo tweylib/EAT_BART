@@ -202,21 +202,35 @@ def _call_groq(
     max_retries: int,
     rate_limit_sleep_seconds: float,
 ) -> str:
-    payload = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": temperature,
-        "response_format": {"type": "json_object"},
-    }
-    response = _post_json(
-        "https://api.groq.com/openai/v1/chat/completions",
-        payload,
-        headers={"Authorization": f"Bearer {api_key}"},
-        timeout_seconds=timeout_seconds,
-        max_retries=max_retries,
-        rate_limit_sleep_seconds=rate_limit_sleep_seconds,
-    )
-    return response["choices"][0]["message"]["content"]
+    try:
+        from groq import Groq
+    except ImportError as error:
+        raise RuntimeError(
+            "Groq judging requires the groq package. "
+            "Install it with `pip install groq` or rerun `pip install -r requirements.txt`."
+        ) from error
+
+    client = Groq(api_key=api_key, timeout=timeout_seconds)
+    for attempt in range(max_retries + 1):
+        try:
+            completion = client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=model,
+                temperature=temperature,
+            )
+            return completion.choices[0].message.content or ""
+        except Exception as error:
+            status_code = getattr(error, "status_code", None)
+            if status_code == 429 and attempt < max_retries:
+                print(
+                    f"Groq judge hit a rate limit. Waiting {rate_limit_sleep_seconds:.1f}s "
+                    f"before retry {attempt + 1}/{max_retries}.",
+                    flush=True,
+                )
+                time.sleep(rate_limit_sleep_seconds)
+                continue
+
+            raise RuntimeError(f"Groq judge request failed: {error}") from error
 
 
 def _post_json(
@@ -325,7 +339,10 @@ def _parse_judge_response(raw_text: str) -> dict[str, Any]:
         cleaned_text = cleaned_text.strip("`")
         cleaned_text = cleaned_text.removeprefix("json").strip()
 
-    data = json.loads(cleaned_text)
+    try:
+        data = json.loads(cleaned_text)
+    except json.JSONDecodeError:
+        data = json.loads(_extract_json_object(cleaned_text))
     parsed = {
         "empathy": _parse_score(data, "empathy"),
         "coherence": _parse_score(data, "coherence"),
@@ -333,6 +350,15 @@ def _parse_judge_response(raw_text: str) -> dict[str, Any]:
         "rationale": str(data.get("rationale", "")),
     }
     return parsed
+
+
+def _extract_json_object(text: str) -> str:
+    start_index = text.find("{")
+    end_index = text.rfind("}")
+    if start_index == -1 or end_index == -1 or end_index <= start_index:
+        raise ValueError(f"Could not find JSON object in judge response: {text}")
+
+    return text[start_index : end_index + 1]
 
 
 def _parse_score(data: dict[str, Any], field: str) -> int:

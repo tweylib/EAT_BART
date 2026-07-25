@@ -4,6 +4,7 @@ datasets
 accelerate
 evaluate
 bert-score
+groq
 pyyaml
 pandas
 numpy

@@ -21,6 +21,16 @@ def test_parse_judge_response_accepts_json() -> None:
     assert result["rationale"] == "Supportive."
 
 
+def test_parse_judge_response_extracts_json_from_text() -> None:
+    result = _parse_judge_response(
+        'Here is the score: {"empathy": 3, "coherence": 4, "safety": 5, "rationale": "Ok."}'
+    )
+
+    assert result["empathy"] == 3
+    assert result["coherence"] == 4
+    assert result["safety"] == 5
+
+
 def test_parse_judge_response_rejects_out_of_range_score() -> None:
     with pytest.raises(ValueError, match="between 1 and 5"):
         _parse_judge_response(
