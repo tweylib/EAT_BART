@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from eat_bart.training.llm_judge import _extract_gemini_text, _parse_judge_response
+from eat_bart.training.llm_judge import (
+    _extract_gemini_text,
+    _parse_judge_response,
+    _rate_limit_wait_seconds,
+)
 
 
 def test_parse_judge_response_accepts_json() -> None:
@@ -29,3 +33,18 @@ def test_extract_gemini_text_reads_interactions_output_text() -> None:
     }
 
     assert _extract_gemini_text(response).startswith('{"empathy"')
+
+
+def test_rate_limit_wait_seconds_reads_retry_message() -> None:
+    class Error:
+        headers = {}
+
+    details = "Please retry in 57.213431047s."
+
+    wait_seconds = _rate_limit_wait_seconds(
+        error=Error(),
+        details=details,
+        fallback_seconds=65.0,
+    )
+
+    assert wait_seconds == pytest.approx(58.213431047)
