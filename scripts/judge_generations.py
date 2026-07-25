@@ -31,7 +31,7 @@ def main() -> None:
         output_path=judge_config["output_path"],
         summary_output_path=judge_config.get("summary_output_path"),
         provider=judge_config.get("provider", "gemini"),
-        model=judge_config.get("model", "gemini-2.5-flash"),
+        model=judge_config.get("model", "gemini-3.6-flash"),
         api_key_env=judge_config.get("api_key_env"),
         question_column=judge_config.get("question_column", "question"),
         prediction_column=judge_config.get("prediction_column", "generated_response"),

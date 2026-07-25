@@ -19,7 +19,7 @@ def score_generation_csv(
     prediction_column: str = "generated_response",
     reference_column: str = "reference_response",
     include_bertscore: bool = False,
-    bertscore_model_type: str = "distilbert-base-uncased",
+    bertscore_model_type: str = "roberta-large",
     bertscore_batch_size: int = 16,
     validation_loss_path: str | Path | None = None,
     validation_loss_mode: str = "best",
@@ -52,7 +52,7 @@ def compute_generation_metrics(
     predictions: list[str],
     references: list[str],
     include_bertscore: bool = False,
-    bertscore_model_type: str = "distilbert-base-uncased",
+    bertscore_model_type: str = "roberta-large",
     bertscore_batch_size: int = 16,
 ) -> dict[str, float]:
     """Compute lightweight text-generation metrics.
@@ -156,13 +156,25 @@ def _compute_bertscore_f1(
 
     normalized_predictions = [prediction if prediction.strip() else "." for prediction in predictions]
     normalized_references = [reference if reference.strip() else "." for reference in references]
-    _, _, f1_scores = score(
-        normalized_predictions,
-        normalized_references,
-        model_type=model_type,
-        batch_size=batch_size,
-        verbose=False,
-    )
+    score_kwargs = {
+        "model_type": model_type,
+        "batch_size": batch_size,
+        "verbose": False,
+    }
+    try:
+        _, _, f1_scores = score(
+            normalized_predictions,
+            normalized_references,
+            use_fast_tokenizer=False,
+            **score_kwargs,
+        )
+    except TypeError:
+        _, _, f1_scores = score(
+            normalized_predictions,
+            normalized_references,
+            **score_kwargs,
+        )
+
     return float(f1_scores.mean().item())
 
 

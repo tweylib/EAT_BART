@@ -19,7 +19,7 @@ def judge_generation_csv(
     output_path: str | Path,
     summary_output_path: str | Path | None = None,
     provider: str = "gemini",
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3.6-flash",
     api_key_env: str | None = None,
     question_column: str = "question",
     prediction_column: str = "generated_response",
@@ -142,16 +142,19 @@ def _call_gemini(
     temperature: float,
     timeout_seconds: int,
 ) -> str:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    _ = temperature
+    url = "https://generativelanguage.googleapis.com/v1beta/interactions"
     payload = {
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": temperature,
-            "responseMimeType": "application/json",
-        },
+        "model": model,
+        "input": prompt,
     }
-    response = _post_json(url, payload, timeout_seconds=timeout_seconds)
-    return response["candidates"][0]["content"]["parts"][0]["text"]
+    response = _post_json(
+        url,
+        payload,
+        headers={"x-goog-api-key": api_key},
+        timeout_seconds=timeout_seconds,
+    )
+    return _extract_gemini_text(response)
 
 
 def _call_groq(
@@ -197,7 +200,38 @@ def _post_json(
             return json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         details = error.read().decode("utf-8", errors="replace")
+        if error.code == 404:
+            raise RuntimeError(
+                "LLM judge request failed because the configured model was not found "
+                "or is unavailable to this account. Check the model name in the judge config. "
+                f"Provider response: {details}"
+            ) from error
+
         raise RuntimeError(f"LLM judge request failed: {error.code} {details}") from error
+
+
+def _extract_gemini_text(response: dict[str, Any]) -> str:
+    output_text = response.get("output_text")
+    if isinstance(output_text, str):
+        return output_text
+
+    steps = response.get("steps")
+    if isinstance(steps, list):
+        for step in reversed(steps):
+            content = step.get("content") if isinstance(step, dict) else None
+            if isinstance(content, list):
+                for part in content:
+                    text = part.get("text") if isinstance(part, dict) else None
+                    if isinstance(text, str):
+                        return text
+
+    candidates = response.get("candidates")
+    if isinstance(candidates, list) and candidates:
+        parts = candidates[0].get("content", {}).get("parts", [])
+        if parts and isinstance(parts[0].get("text"), str):
+            return parts[0]["text"]
+
+    raise RuntimeError(f"Could not extract Gemini judge text from response: {response}")
 
 
 def _parse_judge_response(raw_text: str) -> dict[str, Any]:

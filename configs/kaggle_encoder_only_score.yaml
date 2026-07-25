@@ -4,7 +4,7 @@ scoring:
   prediction_column: generated_response
   reference_column: reference_response
   include_bertscore: true
-  bertscore_model_type: microsoft/deberta-xlarge-mnli
+  bertscore_model_type: roberta-large
   bertscore_batch_size: 8
   validation_loss_path: /kaggle/working/models/eat_bart_encoder_only
   validation_loss_mode: best
