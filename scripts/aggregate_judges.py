@@ -29,6 +29,8 @@ def main() -> None:
     aggregate = aggregate_judge_summaries(
         judges=aggregate_config["judges"],
         output_path=aggregate_config["output_path"],
+        min_completion_rate=float(aggregate_config.get("min_completion_rate", 0.0)),
+        min_judged_examples=int(aggregate_config.get("min_judged_examples", 1)),
     )
 
     for name, value in aggregate.items():
