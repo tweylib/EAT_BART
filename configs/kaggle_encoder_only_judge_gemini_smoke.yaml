@@ -1,0 +1,10 @@
+inherits: configs/kaggle_encoder_only_judge_gemini.yaml
+
+llm_judge:
+  output_path: /kaggle/working/reports/eat_bart_encoder_only_llm_judge_gemini_smoke.csv
+  summary_output_path: /kaggle/working/reports/eat_bart_encoder_only_llm_judge_gemini_smoke_summary.csv
+  max_examples: 3
+  sleep_seconds: 65.0
+  max_retries: 3
+  rate_limit_sleep_seconds: 65.0
+  continue_on_error: true

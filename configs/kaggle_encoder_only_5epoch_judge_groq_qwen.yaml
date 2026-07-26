@@ -1,0 +1,6 @@
+inherits: configs/kaggle_encoder_only_5epoch_judge_groq.yaml
+
+llm_judge:
+  output_path: /kaggle/working/reports/eat_bart_encoder_only_5epoch_llm_judge_groq_qwen.csv
+  summary_output_path: /kaggle/working/reports/eat_bart_encoder_only_5epoch_llm_judge_groq_qwen_summary.csv
+  model: qwen/qwen3.6-27b

@@ -1,0 +1,6 @@
+inherits: configs/kaggle_encoder_only_judge_groq_qwen.yaml
+
+llm_judge:
+  output_path: /kaggle/working/reports/eat_bart_encoder_only_llm_judge_groq_qwen_smoke.csv
+  summary_output_path: /kaggle/working/reports/eat_bart_encoder_only_llm_judge_groq_qwen_smoke_summary.csv
+  max_examples: 3
