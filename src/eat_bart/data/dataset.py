@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import csv
+import html
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +13,13 @@ from typing import Any
 import torch
 from torch.utils.data import Dataset
 from torch.utils.data import Subset
+
+HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
+HTML_TAG_WITH_SPACES_PATTERN = re.compile(r"<\s*/?\s*[^>]+?\s*>")
+CSS_DECLARATION_PATTERN = re.compile(
+    r"\b[a-zA-Z-]+\s*:\s*[^;<>]+(?:;|(?=\s+[a-zA-Z-]+\s*:)|$)"
+)
+WHITESPACE_PATTERN = re.compile(r"\s+")
 
 
 @dataclass(frozen=True)
@@ -96,7 +105,22 @@ def _validate_columns(
 
 
 def _clean_text(value: Any) -> str:
-    return str(value).replace("\r\n", "\n").strip()
+    text = html.unescape(str(value)).replace("\r\n", "\n")
+    text = HTML_TAG_PATTERN.sub(" ", text)
+    text = HTML_TAG_WITH_SPACES_PATTERN.sub(" ", text)
+    text = CSS_DECLARATION_PATTERN.sub(" ", text)
+    text = _normalize_detached_punctuation(text)
+    return WHITESPACE_PATTERN.sub(" ", text).strip()
+
+
+def _normalize_detached_punctuation(text: str) -> str:
+    """Undo common tokenizer-like spacing in dirty HTML-derived text."""
+    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+    text = re.sub(r"([([{])\s+", r"\1", text)
+    text = re.sub(r"\s+([])}])", r"\1", text)
+    text = re.sub(r"([A-Za-z])\s+'\s+([A-Za-z])", r"\1'\2", text)
+    text = re.sub(r"\bpost\s*-\s*traumatic\b", "post-traumatic", text, flags=re.IGNORECASE)
+    return text
 
 
 def split_dataset(
