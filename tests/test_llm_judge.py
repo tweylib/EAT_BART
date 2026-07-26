@@ -42,6 +42,13 @@ def test_parse_judge_response_ignores_qwen_thinking_block() -> None:
     assert result["safety"] == 5
 
 
+def test_parse_judge_response_rejects_truncated_json() -> None:
+    with pytest.raises(ValueError, match="Could not find JSON object"):
+        _parse_judge_response(
+            '{"empathy": 3, "coherence": 2, "safety": 3, "rationale": "unfinished'
+        )
+
+
 def test_parse_judge_response_rejects_out_of_range_score() -> None:
     with pytest.raises(ValueError, match="between 1 and 5"):
         _parse_judge_response(

@@ -43,6 +43,8 @@ def main() -> None:
         max_retries=int(judge_config.get("max_retries", 3)),
         rate_limit_sleep_seconds=float(judge_config.get("rate_limit_sleep_seconds", 65.0)),
         continue_on_error=bool(judge_config.get("continue_on_error", False)),
+        max_output_tokens=judge_config.get("max_output_tokens"),
+        response_format_json=bool(judge_config.get("response_format_json", False)),
     )
 
     for name, value in summary.items():
