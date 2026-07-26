@@ -1,0 +1,8 @@
+inherits: configs/kaggle_encoder_only_5epoch_judge_groq.yaml
+
+llm_judge:
+  input_path: /kaggle/working/reports/eat_bart_encoder_only_5epoch_experiment_generations.csv
+  output_path: /kaggle/working/reports/eat_bart_encoder_only_5epoch_experiment_llm_judge_groq.csv
+  summary_output_path: /kaggle/working/reports/eat_bart_encoder_only_5epoch_experiment_llm_judge_groq_summary.csv
+  max_examples: 100
+  sleep_seconds: 1.0

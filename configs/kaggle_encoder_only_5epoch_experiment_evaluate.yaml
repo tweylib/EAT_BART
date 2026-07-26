@@ -1,0 +1,13 @@
+inherits: configs/kaggle_encoder_only_5epoch_evaluate.yaml
+
+evaluation:
+  output_path: /kaggle/working/reports/eat_bart_encoder_only_5epoch_experiment_generations.csv
+  max_eval_examples:
+  batch_size: 4
+  max_new_tokens: 160
+  num_beams: 4
+  do_sample: false
+  repetition_penalty: 1.15
+  no_repeat_ngram_size: 3
+  length_penalty: 1.15
+  early_stopping: true

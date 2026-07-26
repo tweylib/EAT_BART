@@ -1,0 +1,7 @@
+judge_aggregation:
+  output_path: /kaggle/working/reports/eat_bart_encoder_only_llm_judge_groq_2judge_aggregate.csv
+  judges:
+    - name: llama-3.3-70b-versatile
+      summary_path: /kaggle/working/reports/eat_bart_encoder_only_llm_judge_groq_summary.csv
+    - name: openai/gpt-oss-120b
+      summary_path: /kaggle/working/reports/eat_bart_encoder_only_llm_judge_groq_gpt_oss_summary.csv
