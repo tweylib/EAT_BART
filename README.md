@@ -1,8 +1,10 @@
 # EAT-BART
 
-Emotion-Aware Transformer using `facebook/bart-base` for mental-health response generation.
+Encoder-side Emotion-Aware Transformer using `facebook/bart-base` for mental-health response generation.
 
-The implementation will inject NRC Emotion Intensity Lexicon features into BART encoder self-attention and decoder self-attention only. Cross-attention must remain unchanged.
+This branch contains the encoder-only EAT ablation. NRC Emotion Intensity Lexicon
+features are injected into BART encoder self-attention. Decoder self-attention and
+cross-attention remain standard BART.
 
 ## Project Shape
 
@@ -13,6 +15,29 @@ The implementation will inject NRC Emotion Intensity Lexicon features into BART 
 - `src/eat_bart/utils/`: config, seed, and device utilities.
 - `scripts/`: command-line entry points.
 - `tests/`: focused tests for shapes, masking, lexicon features, and BART patching.
+
+## Current Kaggle Protocol
+
+Train the cleaned 5-epoch encoder-EAT model:
+
+```bash
+python scripts/train.py --config configs/kaggle_encoder_only_5epoch.yaml
+```
+
+Evaluate on the full test split and score automatic metrics:
+
+```bash
+python scripts/evaluate.py --config configs/kaggle_encoder_only_5epoch_experiment_evaluate.yaml
+python scripts/score_generations.py --config configs/kaggle_encoder_only_5epoch_experiment_score.yaml
+```
+
+Run the two Groq LLM judges and aggregate with completion-weighted scores:
+
+```bash
+python scripts/judge_generations.py --config configs/kaggle_encoder_only_5epoch_experiment_judge_groq.yaml
+python scripts/judge_generations.py --config configs/kaggle_encoder_only_5epoch_experiment_judge_groq_gpt_oss.yaml
+python scripts/aggregate_judges.py --config configs/kaggle_encoder_only_5epoch_experiment_judge_groq_2judge_aggregate.yaml
+```
 
 ## Attention Contract
 
