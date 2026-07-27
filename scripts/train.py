@@ -11,7 +11,7 @@ from eat_bart.training.train import train
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train EAT-BART.")
+    parser = argparse.ArgumentParser(description="Train the standard BART baseline.")
     parser.add_argument(
         "--config",
         default="configs/default.yaml",

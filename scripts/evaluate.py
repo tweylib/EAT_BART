@@ -11,7 +11,7 @@ from eat_bart.training.evaluate import evaluate
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Evaluate EAT-BART.")
+    parser = argparse.ArgumentParser(description="Evaluate the standard BART baseline.")
     parser.add_argument(
         "--config",
         default="configs/evaluate.yaml",

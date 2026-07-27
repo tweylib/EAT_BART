@@ -1,62 +1,57 @@
-# EAT-BART
+# Standard BART Baseline
 
-Encoder-side Emotion-Aware Transformer using `facebook/bart-base` for mental-health response generation.
+This branch is the baseline ablation for the EAT-BART project. It fine-tunes an
+unmodified `BartForConditionalGeneration` loaded from `facebook/bart-base` for
+mental-health response generation.
 
-This branch contains the encoder-only EAT ablation. NRC Emotion Intensity Lexicon
-features are injected into BART encoder self-attention. Decoder self-attention and
-cross-attention remain standard BART.
+No EAT attention patches, emotion interaction parameters, NRC lexicon features,
+or emotion tensors are used. Encoder self-attention, decoder self-attention, and
+cross-attention are all the stock Hugging Face BART implementation.
+
+## Comparison Contract
+
+The baseline keeps the experimental protocol inherited from the encoder-EAT
+comparison branch:
+
+- the same dataset columns and deterministic train/validation/test split;
+- the same seed, sequence lengths, optimizer settings, batch sizes, gradient
+  accumulation, epoch count, and generation parameters;
+- the same automatic metrics and two-judge aggregation protocol.
+
+The architecture is the intended independent variable: standard BART versus
+emotion-aware BART.
 
 ## Project Shape
 
-- `configs/`: local and Kaggle experiment settings.
-- `src/eat_bart/data/`: datasets, token emotion features, and NRC lexicon loading.
-- `src/eat_bart/modeling/`: EAT attention modules and BART patching.
-- `src/eat_bart/training/`: training, evaluation, and metrics helpers.
-- `src/eat_bart/utils/`: config, seed, and device utilities.
+- `configs/`: local and Kaggle baseline experiment settings.
+- `src/eat_bart/data/`: dataset, tokenizer, and standard BART collation.
+- `src/eat_bart/training/`: training, generation, metrics, and judging helpers.
+- `src/eat_bart/utils/`: configuration, seed, and device utilities.
 - `scripts/`: command-line entry points.
-- `tests/`: focused tests for shapes, masking, lexicon features, and BART patching.
+- `tests/`: focused baseline pipeline and evaluation tests.
 
-## Current Kaggle Protocol
+The `eat_bart` Python namespace remains unchanged so shared experiment tooling
+can import the worktrees consistently; it does not imply EAT is enabled here.
 
-Train the cleaned 5-epoch encoder-EAT model:
+## Kaggle Protocol
 
-```bash
-python scripts/train.py --config configs/kaggle_encoder_only_5epoch.yaml
-```
-
-Evaluate on the full test split and score automatic metrics:
+Train the 5-epoch baseline:
 
 ```bash
-python scripts/evaluate.py --config configs/kaggle_encoder_only_5epoch_experiment_evaluate.yaml
-python scripts/score_generations.py --config configs/kaggle_encoder_only_5epoch_experiment_score.yaml
+python scripts/train.py --config configs/kaggle_baseline_5epoch.yaml
 ```
 
-Run the two Groq LLM judges and aggregate with completion-weighted scores:
+Evaluate the full test split and score automatic metrics:
 
 ```bash
-python scripts/judge_generations.py --config configs/kaggle_encoder_only_5epoch_experiment_judge_groq.yaml
-python scripts/judge_generations.py --config configs/kaggle_encoder_only_5epoch_experiment_judge_groq_gpt_oss.yaml
-python scripts/aggregate_judges.py --config configs/kaggle_encoder_only_5epoch_experiment_judge_groq_2judge_aggregate.yaml
+python scripts/evaluate.py --config configs/kaggle_baseline_5epoch_experiment_evaluate.yaml
+python scripts/score_generations.py --config configs/kaggle_baseline_5epoch_experiment_score.yaml
 ```
 
-## Attention Contract
+Run both Groq judges and aggregate completion-weighted scores:
 
-Base attention scores:
-
-```text
-A = QK^T / sqrt(d_k)
+```bash
+python scripts/judge_generations.py --config configs/kaggle_baseline_5epoch_experiment_judge_groq.yaml
+python scripts/judge_generations.py --config configs/kaggle_baseline_5epoch_experiment_judge_groq_gpt_oss.yaml
+python scripts/aggregate_judges.py --config configs/kaggle_baseline_5epoch_experiment_judge_groq_2judge_aggregate.yaml
 ```
-
-Main EAT formula:
-
-```text
-A_eat = A + alpha_h * S_h
-```
-
-Ablation formula:
-
-```text
-A_eat = A * (I + alpha_h * S_h)
-```
-
-Padding and causal masks are applied last with `masked_fill`.

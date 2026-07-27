@@ -1,4 +1,4 @@
-"""Evaluation helpers for EAT-BART."""
+"""Evaluation helpers for the standard BART baseline."""
 
 from __future__ import annotations
 
@@ -10,24 +10,20 @@ import torch
 from transformers import BartForConditionalGeneration
 
 from eat_bart.data.dataset import MentalHealthResponseDataset, split_dataset
-from eat_bart.data.emotion_features import tokenize_texts_with_emotion_features
-from eat_bart.data.emotion_lexicon import load_nrc_lexicon
 from eat_bart.data.tokenizer import load_bart_tokenizer
-from eat_bart.modeling.eat_attention import EATAttentionConfig
-from eat_bart.modeling.eat_bart_model import DEFAULT_MODEL_NAME, load_eat_bart_checkpoint
-from eat_bart.training.train import _require_file
+from eat_bart.training.train import DEFAULT_MODEL_NAME, _require_file
 from eat_bart.utils.config import load_yaml_config
 from eat_bart.utils.seed import set_seed
 
 
 def evaluate(config_path: str | Path = "configs/evaluate.yaml") -> None:
-    """Evaluate EAT-BART."""
+    """Evaluate a fine-tuned or pretrained standard BART model."""
     config = load_yaml_config(config_path)
     run_generation(config)
 
 
 def run_generation(config: dict[str, Any]) -> Path:
-    """Generate responses from a trained EAT-BART checkpoint and write them to CSV."""
+    """Generate responses from standard BART and write them to CSV."""
     model_config = config["model"]
     data_config = config["data"]
     evaluation_config = config["evaluation"]
@@ -36,11 +32,10 @@ def run_generation(config: dict[str, Any]) -> Path:
     set_seed(seed)
 
     dataset_path = _require_file(data_config["dataset_path"], "dataset CSV")
-    lexicon_path = _require_file(data_config["nrc_lexicon_path"], "NRC lexicon CSV")
-    model_source = evaluation_config.get("model_source", "eat_checkpoint")
+    model_source = evaluation_config.get("model_source", "checkpoint")
     checkpoint_path = None
-    if model_source == "eat_checkpoint":
-        checkpoint_path = _require_file(evaluation_config["checkpoint_path"], "EAT-BART checkpoint")
+    if model_source == "checkpoint":
+        checkpoint_path = _require_file(evaluation_config["checkpoint_path"], "BART checkpoint")
 
     dataset = MentalHealthResponseDataset.from_csv(
         path=dataset_path,
@@ -64,37 +59,19 @@ def run_generation(config: dict[str, Any]) -> Path:
     tokenizer = load_bart_tokenizer(
         model_name,
         local_files_only=local_files_only,
-        add_prefix_space=bool(model_config.get("add_prefix_space", True)),
-    )
-
-    lexicon = load_nrc_lexicon(lexicon_path)
-    eat_config = EATAttentionConfig(
-        num_heads=12,
-        emotion_dim=int(model_config.get("emotion_dim", 8)),
-        emotion_hidden_dim=int(model_config.get("emotion_hidden_dim", 32)),
-        alpha_init=float(model_config.get("alpha_init", 0.05)),
-        formula=model_config.get("attention_formula", "additive"),
+        add_prefix_space=bool(model_config.get("add_prefix_space", False)),
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if model_source == "eat_checkpoint":
-        model = load_eat_bart_checkpoint(
+    if model_source == "checkpoint":
+        model = BartForConditionalGeneration.from_pretrained(
             checkpoint_path,
-            eat_config=eat_config,
-            modify_encoder_self_attention=bool(
-                model_config.get("modify_encoder_self_attention", True)
-            ),
-            modify_decoder_self_attention=bool(
-                model_config.get("modify_decoder_self_attention", True)
-            ),
         ).to(device)
-        use_emotion_encoder = bool(model_config.get("modify_encoder_self_attention", True))
     elif model_source == "pretrained_bart":
         model = BartForConditionalGeneration.from_pretrained(
             model_name,
             local_files_only=local_files_only,
         ).to(device)
-        use_emotion_encoder = False
     else:
         raise ValueError(f"Unsupported evaluation model_source: {model_source}")
     model.eval()
@@ -102,15 +79,13 @@ def run_generation(config: dict[str, Any]) -> Path:
     rows = _generate_rows(
         examples=examples,
         tokenizer=tokenizer,
-        lexicon=lexicon,
         model=model,
         device=device,
         data_config=data_config,
         evaluation_config=evaluation_config,
-        use_emotion_encoder=use_emotion_encoder,
     )
 
-    output_path = Path(evaluation_config.get("output_path", "reports/eat_bart_generations.csv"))
+    output_path = Path(evaluation_config.get("output_path", "reports/bart_baseline_generations.csv"))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     _write_generation_rows(output_path, rows)
     return output_path
@@ -119,12 +94,10 @@ def run_generation(config: dict[str, Any]) -> Path:
 def _generate_rows(
     examples: list[dict[str, str]],
     tokenizer: Any,
-    lexicon: Any,
     model: torch.nn.Module,
     device: torch.device,
     data_config: dict[str, Any],
     evaluation_config: dict[str, Any],
-    use_emotion_encoder: bool,
 ) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     batch_size = int(evaluation_config.get("batch_size", 4))
@@ -134,37 +107,22 @@ def _generate_rows(
         questions = [example["question"] for example in batch_examples]
         references = [example["response"] for example in batch_examples]
 
-        encoded, encoder_emotion_features = tokenize_texts_with_emotion_features(
-            texts=questions,
-            tokenizer=tokenizer,
-            lexicon=lexicon,
+        encoded = tokenizer(
+            questions,
             max_length=int(data_config.get("max_source_length", 256)),
             padding=True,
             truncation=True,
-            strategy=data_config.get("subword_strategy", "single"),
+            return_tensors="pt",
         )
         encoded = {key: value.to(device) for key, value in encoded.items()}
-        encoder_emotion_features = encoder_emotion_features.to(device)
 
         with torch.no_grad():
             generation_kwargs = _build_generation_kwargs(evaluation_config)
-            if use_emotion_encoder:
-                encoder_outputs = model.model.encoder(
-                    input_ids=encoded["input_ids"],
-                    attention_mask=encoded["attention_mask"],
-                    encoder_emotion_features=encoder_emotion_features,
-                )
-                generated_ids = model.generate(
-                    encoder_outputs=encoder_outputs,
-                    attention_mask=encoded["attention_mask"],
-                    **generation_kwargs,
-                )
-            else:
-                generated_ids = model.generate(
-                    input_ids=encoded["input_ids"],
-                    attention_mask=encoded["attention_mask"],
-                    **generation_kwargs,
-                )
+            generated_ids = model.generate(
+                input_ids=encoded["input_ids"],
+                attention_mask=encoded["attention_mask"],
+                **generation_kwargs,
+            )
 
         predictions = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
         predictions_with_special_tokens = tokenizer.batch_decode(
