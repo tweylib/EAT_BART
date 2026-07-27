@@ -1,8 +1,0 @@
-inherits: configs/kaggle_encoder_only_final_judge_groq.yaml
-
-llm_judge:
-  output_path: /kaggle/working/reports/eat_bart_encoder_only_final_llm_judge_groq_gpt_oss.csv
-  summary_output_path: /kaggle/working/reports/eat_bart_encoder_only_final_llm_judge_groq_gpt_oss_summary.csv
-  model: openai/gpt-oss-120b
-  response_format_json: false
-  max_output_tokens: 512

@@ -9,22 +9,6 @@ def test_kaggle_config_inherits_default_config() -> None:
     assert config["training"]["output_dir"] == "/kaggle/working/models/eat_bart"
 
 
-def test_kaggle_evaluate_config_inherits_kaggle_config() -> None:
-    config = load_yaml_config("configs/kaggle_evaluate.yaml")
-
-    assert config["data"]["dataset_path"].endswith("finalMentalHealthDataset-question-response.csv")
-    assert config["evaluation"]["model_source"] == "eat_checkpoint"
-    assert config["evaluation"]["checkpoint_path"] == "/kaggle/working/models/eat_bart"
-    assert config["evaluation"]["output_path"] == "/kaggle/working/reports/eat_bart_generations.csv"
-
-
-def test_kaggle_baseline_generate_config_uses_pretrained_bart() -> None:
-    config = load_yaml_config("configs/kaggle_baseline_generate.yaml")
-
-    assert config["evaluation"]["model_source"] == "pretrained_bart"
-    assert config["evaluation"]["output_path"] == "/kaggle/working/reports/bart_base_generations.csv"
-
-
 def test_kaggle_encoder_only_config_disables_decoder_self_attention_patch() -> None:
     config = load_yaml_config("configs/kaggle_encoder_only.yaml")
 
@@ -33,8 +17,18 @@ def test_kaggle_encoder_only_config_disables_decoder_self_attention_patch() -> N
     assert config["training"]["output_dir"] == "/kaggle/working/models/eat_bart_encoder_only"
 
 
-def test_kaggle_encoder_only_evaluate_uses_encoder_only_checkpoint() -> None:
-    config = load_yaml_config("configs/kaggle_encoder_only_evaluate.yaml")
+def test_kaggle_encoder_only_experiment_evaluate_uses_full_test_split() -> None:
+    config = load_yaml_config("configs/kaggle_encoder_only_5epoch_experiment_evaluate.yaml")
 
     assert config["model"]["modify_decoder_self_attention"] is False
-    assert config["evaluation"]["checkpoint_path"] == "/kaggle/working/models/eat_bart_encoder_only"
+    assert config["evaluation"]["checkpoint_path"] == "/kaggle/working/models/eat_bart_encoder_only_5epoch"
+    assert config["evaluation"]["max_eval_examples"] is None
+
+
+def test_kaggle_encoder_only_experiment_uses_weighted_two_judge_aggregate() -> None:
+    config = load_yaml_config(
+        "configs/kaggle_encoder_only_5epoch_experiment_judge_groq_2judge_aggregate.yaml"
+    )
+
+    assert config["judge_aggregation"]["min_judged_examples"] == 1
+    assert len(config["judge_aggregation"]["judges"]) == 2

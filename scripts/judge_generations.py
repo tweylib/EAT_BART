@@ -16,7 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Judge generated responses with an LLM.")
     parser.add_argument(
         "--config",
-        default="configs/kaggle_encoder_only_judge_gemini.yaml",
+        default="configs/kaggle_encoder_only_5epoch_experiment_judge_groq.yaml",
         help="Path to YAML config file.",
     )
     return parser.parse_args()
@@ -30,8 +30,8 @@ def main() -> None:
         input_path=judge_config["input_path"],
         output_path=judge_config["output_path"],
         summary_output_path=judge_config.get("summary_output_path"),
-        provider=judge_config.get("provider", "gemini"),
-        model=judge_config.get("model", "gemini-3.6-flash"),
+        provider=judge_config.get("provider", "groq"),
+        model=judge_config.get("model", "llama-3.3-70b-versatile"),
         api_key_env=judge_config.get("api_key_env"),
         question_column=judge_config.get("question_column", "question"),
         prediction_column=judge_config.get("prediction_column", "generated_response"),

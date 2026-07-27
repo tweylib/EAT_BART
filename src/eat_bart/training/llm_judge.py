@@ -7,13 +7,10 @@ import json
 import os
 import re
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any
 
 JUDGE_SCORE_FIELDS = ["empathy", "coherence", "safety"]
-RETRY_SECONDS_PATTERN = re.compile(r"retry in ([0-9.]+)s", re.IGNORECASE)
 THINK_BLOCK_PATTERN = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 
 
@@ -21,8 +18,8 @@ def judge_generation_csv(
     input_path: str | Path,
     output_path: str | Path,
     summary_output_path: str | Path | None = None,
-    provider: str = "gemini",
-    model: str = "gemini-3.6-flash",
+    provider: str = "groq",
+    model: str = "llama-3.3-70b-versatile",
     api_key_env: str | None = None,
     question_column: str = "question",
     prediction_column: str = "generated_response",
@@ -122,18 +119,7 @@ def _judge_row(
         generated_response=row.get(prediction_column, ""),
         reference_response=row.get(reference_column, ""),
     )
-    if provider == "gemini":
-        raw_text = _call_gemini(
-            model=model,
-            api_key=api_key,
-            prompt=prompt,
-            temperature=temperature,
-            timeout_seconds=timeout_seconds,
-            max_retries=max_retries,
-            rate_limit_sleep_seconds=rate_limit_sleep_seconds,
-            max_output_tokens=max_output_tokens,
-        )
-    elif provider == "groq":
+    if provider == "groq":
         raw_text = _call_groq(
             model=model,
             api_key=api_key,
@@ -146,7 +132,7 @@ def _judge_row(
             response_format_json=response_format_json,
         )
     else:
-        raise ValueError("provider must be 'gemini' or 'groq'.")
+        raise ValueError("provider must be 'groq'.")
 
     return _parse_judge_response(raw_text)
 
@@ -176,33 +162,6 @@ Reference response:
 Generated response:
 {generated_response}
 """
-
-
-def _call_gemini(
-    model: str,
-    api_key: str,
-    prompt: str,
-    temperature: float,
-    timeout_seconds: int,
-    max_retries: int,
-    rate_limit_sleep_seconds: float,
-    max_output_tokens: int | None,
-) -> str:
-    _ = temperature
-    url = "https://generativelanguage.googleapis.com/v1beta/interactions"
-    payload = {
-        "model": model,
-        "input": prompt,
-    }
-    response = _post_json(
-        url,
-        payload,
-        headers={"x-goog-api-key": api_key},
-        timeout_seconds=timeout_seconds,
-        max_retries=max_retries,
-        rate_limit_sleep_seconds=rate_limit_sleep_seconds,
-    )
-    return _extract_gemini_text(response)
 
 
 def _call_groq(
@@ -253,106 +212,6 @@ def _call_groq(
                 continue
 
             raise RuntimeError(f"Groq judge request failed: {error}") from error
-
-
-def _post_json(
-    url: str,
-    payload: dict[str, Any],
-    headers: dict[str, str] | None = None,
-    timeout_seconds: int = 60,
-    max_retries: int = 3,
-    rate_limit_sleep_seconds: float = 65.0,
-) -> dict[str, Any]:
-    request_headers = {"Content-Type": "application/json"}
-    if headers is not None:
-        request_headers.update(headers)
-
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers=request_headers,
-        method="POST",
-    )
-    for attempt in range(max_retries + 1):
-        try:
-            with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as error:
-            details = error.read().decode("utf-8", errors="replace")
-            if error.code == 429 and attempt < max_retries:
-                wait_seconds = _rate_limit_wait_seconds(
-                    error=error,
-                    details=details,
-                    fallback_seconds=rate_limit_sleep_seconds,
-                )
-                print(
-                    f"LLM judge hit a rate limit. Waiting {wait_seconds:.1f}s "
-                    f"before retry {attempt + 1}/{max_retries}.",
-                    flush=True,
-                )
-                time.sleep(wait_seconds)
-                continue
-
-            if error.code == 404:
-                raise RuntimeError(
-                    "LLM judge request failed because the configured model was not found "
-                    "or is unavailable to this account. Check the model name in the judge config. "
-                    f"Provider response: {details}"
-                ) from error
-
-            if error.code == 429:
-                raise RuntimeError(
-                    "LLM judge request failed after retrying rate-limit responses. "
-                    "Reduce max_examples or increase sleep_seconds in the judge config. "
-                    f"Provider response: {details}"
-                ) from error
-
-            raise RuntimeError(f"LLM judge request failed: {error.code} {details}") from error
-
-    raise RuntimeError("LLM judge request failed after retries.")
-
-
-def _rate_limit_wait_seconds(
-    error: urllib.error.HTTPError,
-    details: str,
-    fallback_seconds: float,
-) -> float:
-    retry_after = error.headers.get("Retry-After")
-    if retry_after is not None:
-        try:
-            return float(retry_after) + 1.0
-        except ValueError:
-            pass
-
-    match = RETRY_SECONDS_PATTERN.search(details)
-    if match is not None:
-        return float(match.group(1)) + 1.0
-
-    return fallback_seconds
-
-
-def _extract_gemini_text(response: dict[str, Any]) -> str:
-    output_text = response.get("output_text")
-    if isinstance(output_text, str):
-        return output_text
-
-    steps = response.get("steps")
-    if isinstance(steps, list):
-        for step in reversed(steps):
-            content = step.get("content") if isinstance(step, dict) else None
-            if isinstance(content, list):
-                for part in content:
-                    text = part.get("text") if isinstance(part, dict) else None
-                    if isinstance(text, str):
-                        return text
-
-    candidates = response.get("candidates")
-    if isinstance(candidates, list) and candidates:
-        parts = candidates[0].get("content", {}).get("parts", [])
-        if parts and isinstance(parts[0].get("text"), str):
-            return parts[0]["text"]
-
-    raise RuntimeError(f"Could not extract Gemini judge text from response: {response}")
 
 
 def _parse_judge_response(raw_text: str) -> dict[str, Any]:
@@ -410,9 +269,8 @@ def _summarize_judgments(rows: list[dict[str, str]]) -> dict[str, float]:
 
 
 def _load_api_key(provider: str, api_key_env: str | None) -> str:
-    env_name = api_key_env
-    if env_name is None:
-        env_name = "GEMINI_API_KEY" if provider == "gemini" else "GROQ_API_KEY"
+    _ = provider
+    env_name = api_key_env or "GROQ_API_KEY"
 
     api_key = os.environ.get(env_name)
     if not api_key:

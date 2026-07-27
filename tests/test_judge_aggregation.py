@@ -9,7 +9,7 @@ from eat_bart.training.judge_aggregation import aggregate_judge_summaries
 
 def test_aggregate_judge_summaries_averages_completed_judges(tmp_path) -> None:
     llama_path = tmp_path / "llama.csv"
-    qwen_path = tmp_path / "qwen.csv"
+    second_judge_path = tmp_path / "second_judge.csv"
     _write_summary(
         llama_path,
         {
@@ -20,7 +20,7 @@ def test_aggregate_judge_summaries_averages_completed_judges(tmp_path) -> None:
         },
     )
     _write_summary(
-        qwen_path,
+        second_judge_path,
         {
             "num_judged_examples": "10",
             "llm_empathy": "2",
@@ -33,7 +33,7 @@ def test_aggregate_judge_summaries_averages_completed_judges(tmp_path) -> None:
     aggregate = aggregate_judge_summaries(
         judges=[
             {"name": "llama", "summary_path": str(llama_path)},
-            {"name": "qwen", "summary_path": str(qwen_path)},
+            {"name": "second-judge", "summary_path": str(second_judge_path)},
         ],
         output_path=output_path,
     )
