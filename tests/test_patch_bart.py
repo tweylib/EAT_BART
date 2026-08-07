@@ -95,6 +95,56 @@ def test_patched_bart_forward_accepts_encoder_and_decoder_emotion_features() -> 
     assert tuple(output.logits.shape) == (1, 3, 99)
 
 
+def test_encoder_emotion_features_backprop_to_encoder_alpha() -> None:
+    config = BartConfig(
+        d_model=16,
+        encoder_layers=1,
+        decoder_layers=1,
+        encoder_attention_heads=2,
+        decoder_attention_heads=2,
+        encoder_ffn_dim=32,
+        decoder_ffn_dim=32,
+        vocab_size=99,
+        pad_token_id=1,
+        bos_token_id=0,
+        eos_token_id=2,
+        decoder_start_token_id=2,
+        dropout=0.0,
+        attention_dropout=0.0,
+        encoder_layerdrop=0.0,
+        decoder_layerdrop=0.0,
+    )
+    model = BartForConditionalGeneration(config)
+    patch_bart_self_attention(model, modify_decoder_self_attention=False)
+
+    input_ids = torch.tensor([[0, 5, 6, 7, 2]])
+    attention_mask = torch.ones_like(input_ids)
+    labels = torch.tensor([[8, 9, 10, 2]])
+    encoder_emotion_features = torch.tensor(
+        [
+            [
+                [0.1, 0.0, 0.2, 0.0, 0.3, 0.0, 0.4, 0.0],
+                [0.0, 0.2, 0.0, 0.3, 0.0, 0.4, 0.0, 0.5],
+                [0.5, 0.0, 0.4, 0.0, 0.3, 0.0, 0.2, 0.0],
+                [0.0, 0.4, 0.0, 0.2, 0.0, 0.1, 0.0, 0.3],
+                [0.3, 0.1, 0.0, 0.2, 0.4, 0.0, 0.5, 0.0],
+            ]
+        ]
+    )
+
+    output = model(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        labels=labels,
+        encoder_emotion_features=encoder_emotion_features,
+    )
+    output.loss.backward()
+
+    alpha = model.model.encoder.layers[0].self_attn.emotion_interaction.alpha
+    assert alpha.grad is not None
+    assert alpha.grad.abs().sum().item() > 0.0
+
+
 def test_patched_bart_generate_accepts_precomputed_emotion_encoder_outputs() -> None:
     config = BartConfig(
         d_model=16,
