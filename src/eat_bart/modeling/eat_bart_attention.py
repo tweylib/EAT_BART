@@ -128,6 +128,9 @@ class EATBartAttention(BartAttention):
         if emotion_features is None:
             emotion_features = decoder_emotion_features if self.is_decoder else encoder_emotion_features
 
+        if emotion_features is None:
+            emotion_features = getattr(self, "_eat_emotion_features", None)
+
         if emotion_features is not None:
             # emotion_scores shape: [batch_size, num_heads, tgt_len, src_len]
             emotion_scores = self.emotion_interaction(emotion_features)
