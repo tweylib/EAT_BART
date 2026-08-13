@@ -1,0 +1,10 @@
+scoring:
+  input_path: /kaggle/working/reports/eat_bart_encoder_only_alpha_0_1_5epoch_experiment_generations.csv
+  output_path: /kaggle/working/reports/eat_bart_encoder_only_alpha_0_1_5epoch_experiment_metrics.csv
+  prediction_column: generated_response
+  reference_column: reference_response
+  include_bertscore: true
+  bertscore_model_type: roberta-large
+  bertscore_batch_size: 8
+  validation_loss_path: /kaggle/working/models/eat_bart_encoder_only_alpha_0_1_5epoch
+  validation_loss_mode: best
