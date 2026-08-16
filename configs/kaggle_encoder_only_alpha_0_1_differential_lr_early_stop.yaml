@@ -1,0 +1,21 @@
+inherits: configs/kaggle_encoder_only_alpha_0_1_5epoch.yaml
+
+training:
+  output_dir: /kaggle/working/models/eat_bart_encoder_only_alpha_0_1_differential_lr_early_stop
+  num_train_epochs: 50
+  learning_rate: 0.00001
+  eat_learning_rate: 0.00005
+  alpha_learning_rate: 0.01
+  eval_strategy: epoch
+  save_strategy: epoch
+  save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
+  early_stopping_patience: 2
+  early_stopping_threshold: 0.0
+
+eat_signal:
+  enabled: true
+  output_path: /kaggle/working/reports/eat_bart_encoder_only_alpha_0_1_differential_lr_early_stop_r_h.csv
+  max_batches: 50

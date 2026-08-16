@@ -1,4 +1,5 @@
 from eat_bart.utils.config import load_yaml_config
+from eat_bart.training.train import _build_callbacks, build_training_arguments
 
 
 def test_kaggle_config_inherits_default_config() -> None:
@@ -55,3 +56,31 @@ def test_kaggle_encoder_only_alpha_0_1_experiment_is_isolated() -> None:
         "training"
     ]["output_dir"]
     assert "alpha_0_1" in evaluation_config["evaluation"]["output_path"]
+
+
+def test_differential_lr_early_stopping_experiment_protocol() -> None:
+    config = load_yaml_config(
+        "configs/kaggle_encoder_only_alpha_0_1_differential_lr_early_stop.yaml"
+    )
+
+    assert config["model"]["alpha_init"] == 0.1
+    assert config["model"]["modify_encoder_self_attention"] is True
+    assert config["model"]["modify_decoder_self_attention"] is False
+    assert config["training"]["num_train_epochs"] == 50
+    assert config["training"]["learning_rate"] == 1e-5
+    assert config["training"]["eat_learning_rate"] == 5e-5
+    assert config["training"]["alpha_learning_rate"] == 0.01
+    assert config["training"]["early_stopping_patience"] == 2
+    assert config["training"]["load_best_model_at_end"] is True
+    assert config["training"]["metric_for_best_model"] == "eval_loss"
+    assert config["training"]["greater_is_better"] is False
+    assert config["eat_signal"]["max_batches"] == 50
+
+    local_training_config = dict(config["training"], require_cuda=False)
+    arguments = build_training_arguments(local_training_config)
+    callbacks = _build_callbacks(config["training"])
+    assert arguments.load_best_model_at_end is True
+    assert arguments.metric_for_best_model == "eval_loss"
+    assert arguments.greater_is_better is False
+    assert len(callbacks) == 1
+    assert callbacks[0].early_stopping_patience == 2

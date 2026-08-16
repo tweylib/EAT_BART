@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from transformers import Seq2SeqTrainer, Seq2SeqTrainingArguments
+from transformers import EarlyStoppingCallback, Seq2SeqTrainer, Seq2SeqTrainingArguments
 
 from eat_bart.data.collator import EATBartDataCollator
 from eat_bart.data.dataset import MentalHealthResponseDataset, split_dataset
@@ -14,6 +14,8 @@ from eat_bart.data.emotion_lexicon import load_nrc_lexicon
 from eat_bart.data.tokenizer import load_bart_tokenizer
 from eat_bart.modeling.eat_attention import EATAttentionConfig
 from eat_bart.modeling.eat_bart_model import DEFAULT_MODEL_NAME, load_eat_bart_model
+from eat_bart.training.eat_signal import calculate_encoder_eat_signal, write_eat_signal_csv
+from eat_bart.training.optimizer import DifferentialLearningRateTrainer
 from eat_bart.utils.config import load_yaml_config
 from eat_bart.utils.seed import set_seed
 
@@ -25,6 +27,7 @@ def train(config_path: str | Path = "configs/default.yaml") -> None:
     trainer.train()
     if bool(config["training"].get("save_model", True)):
         trainer.save_model()
+    _run_eat_signal_diagnostic(trainer, config.get("eat_signal"))
 
 
 def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
@@ -89,13 +92,30 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
     )
 
     training_arguments = build_training_arguments(training_config)
-    return Seq2SeqTrainer(
+    callbacks = _build_callbacks(training_config)
+    trainer_class: type[Seq2SeqTrainer] = Seq2SeqTrainer
+    trainer_kwargs: dict[str, Any] = {}
+    if "eat_learning_rate" in training_config or "alpha_learning_rate" in training_config:
+        trainer_class = DifferentialLearningRateTrainer
+        base_learning_rate = float(training_config.get("learning_rate", 3e-5))
+        trainer_kwargs.update(
+            eat_learning_rate=float(
+                training_config.get("eat_learning_rate", base_learning_rate)
+            ),
+            alpha_learning_rate=float(
+                training_config.get("alpha_learning_rate", base_learning_rate)
+            ),
+        )
+
+    return trainer_class(
         model=model,
         args=training_arguments,
         train_dataset=train_dataset,
         eval_dataset=validation_dataset,
         data_collator=collator,
         processing_class=tokenizer,
+        callbacks=callbacks,
+        **trainer_kwargs,
     )
 
 
@@ -127,11 +147,59 @@ def build_training_arguments(training_config: dict[str, Any]) -> Seq2SeqTraining
         remove_unused_columns=False,
         report_to=training_config.get("report_to", "none"),
         optim=training_config.get("optim", "adamw_torch"),
+        weight_decay=float(training_config.get("weight_decay", 0.0)),
+        max_grad_norm=float(training_config.get("max_grad_norm", 1.0)),
         dataloader_num_workers=int(training_config.get("dataloader_num_workers", 0)),
         dataloader_pin_memory=bool(
             training_config.get("dataloader_pin_memory", torch.cuda.is_available())
         ),
+        load_best_model_at_end=bool(training_config.get("load_best_model_at_end", False)),
+        metric_for_best_model=training_config.get("metric_for_best_model"),
+        greater_is_better=training_config.get("greater_is_better"),
     )
+
+
+def _build_callbacks(training_config: dict[str, Any]) -> list[EarlyStoppingCallback]:
+    """Build optional validation-based early stopping callbacks."""
+    patience = training_config.get("early_stopping_patience")
+    if patience is None:
+        return []
+
+    patience = int(patience)
+    if patience < 1:
+        raise ValueError("early_stopping_patience must be at least 1.")
+    if training_config.get("eval_strategy", "epoch") == "no":
+        raise ValueError("Early stopping requires evaluation to be enabled.")
+    if not bool(training_config.get("load_best_model_at_end", False)):
+        raise ValueError("Early stopping requires load_best_model_at_end: true.")
+
+    return [
+        EarlyStoppingCallback(
+            early_stopping_patience=patience,
+            early_stopping_threshold=float(
+                training_config.get("early_stopping_threshold", 0.0)
+            ),
+        )
+    ]
+
+
+def _run_eat_signal_diagnostic(
+    trainer: Seq2SeqTrainer,
+    diagnostic_config: dict[str, Any] | None,
+) -> None:
+    """Calculate and persist r_h for the best model after training."""
+    if not diagnostic_config or not bool(diagnostic_config.get("enabled", True)):
+        return
+
+    rows, summary = calculate_encoder_eat_signal(
+        model=trainer.model,
+        dataloader=trainer.get_eval_dataloader(),
+        max_batches=diagnostic_config.get("max_batches"),
+    )
+    output_path = write_eat_signal_csv(diagnostic_config["output_path"], rows)
+    print(f"EAT signal report: {output_path}")
+    for name, value in summary.items():
+        print(f"{name}: {value:.8f}")
 
 
 def _require_file(path: str | Path, label: str) -> Path:
