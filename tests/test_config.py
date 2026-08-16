@@ -66,7 +66,7 @@ def test_differential_lr_early_stopping_experiment_protocol() -> None:
     assert config["model"]["alpha_init"] == 0.1
     assert config["model"]["modify_encoder_self_attention"] is True
     assert config["model"]["modify_decoder_self_attention"] is False
-    assert config["training"]["num_train_epochs"] == 50
+    assert config["training"]["num_train_epochs"] == 40
     assert config["training"]["learning_rate"] == 1e-5
     assert config["training"]["eat_learning_rate"] == 5e-5
     assert config["training"]["alpha_learning_rate"] == 0.01

@@ -2,7 +2,7 @@ inherits: configs/kaggle_encoder_only_alpha_0_1_5epoch.yaml
 
 training:
   output_dir: /kaggle/working/models/eat_bart_encoder_only_alpha_0_1_differential_lr_early_stop
-  num_train_epochs: 50
+  num_train_epochs: 40
   learning_rate: 0.00001
   eat_learning_rate: 0.00005
   alpha_learning_rate: 0.01
