@@ -1,28 +1,34 @@
-"""Training loop setup for EAT-BART."""
+"""Training loop setup for the standard BART baseline."""
 
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 from typing import Any
 
 import torch
-from transformers import Seq2SeqTrainer, Seq2SeqTrainingArguments
+from transformers import (
+    BartForConditionalGeneration,
+    EarlyStoppingCallback,
+    Seq2SeqTrainer,
+    Seq2SeqTrainingArguments,
+)
 
-from eat_bart.data.collator import EATBartDataCollator
+from eat_bart.data.collator import BartDataCollator
 from eat_bart.data.dataset import MentalHealthResponseDataset, split_dataset
-from eat_bart.data.emotion_lexicon import load_nrc_lexicon
 from eat_bart.data.tokenizer import load_bart_tokenizer
-from eat_bart.modeling.eat_attention import EATAttentionConfig
-from eat_bart.modeling.eat_bart_model import DEFAULT_MODEL_NAME, load_eat_bart_model
 from eat_bart.utils.config import load_yaml_config
 from eat_bart.utils.seed import set_seed
 
+DEFAULT_MODEL_NAME = "facebook/bart-base"
+
 
 def train(config_path: str | Path = "configs/default.yaml") -> None:
-    """Train EAT-BART."""
+    """Fine-tune an unmodified BART model."""
     config = load_yaml_config(config_path)
     trainer = build_trainer(config)
     trainer.train()
+    _write_epoch_loss_report(trainer)
     if bool(config["training"].get("save_model", True)):
         trainer.save_model()
 
@@ -36,8 +42,6 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
     set_seed(seed)
 
     dataset_path = _require_file(data_config["dataset_path"], "dataset CSV")
-    lexicon_path = _require_file(data_config["nrc_lexicon_path"], "NRC lexicon CSV")
-
     dataset = MentalHealthResponseDataset.from_csv(
         path=dataset_path,
         question_column=data_config.get("question_column", "question"),
@@ -56,39 +60,25 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
     tokenizer = load_bart_tokenizer(
         model_name,
         local_files_only=local_files_only,
-        add_prefix_space=bool(model_config.get("add_prefix_space", True)),
+        add_prefix_space=bool(model_config.get("add_prefix_space", False)),
     )
 
-    lexicon = load_nrc_lexicon(lexicon_path)
-    eat_config = EATAttentionConfig(
-        num_heads=12,
-        emotion_dim=int(model_config.get("emotion_dim", 8)),
-        emotion_hidden_dim=int(model_config.get("emotion_hidden_dim", 32)),
-        alpha_init=float(model_config.get("alpha_init", 0.05)),
-        formula=model_config.get("attention_formula", "additive"),
-    )
-    model = load_eat_bart_model(
-        model_name=model_name,
-        eat_config=eat_config,
+    model = BartForConditionalGeneration.from_pretrained(
+        model_name,
         local_files_only=local_files_only,
-        modify_encoder_self_attention=bool(
-            model_config.get("modify_encoder_self_attention", True)
-        ),
-        modify_decoder_self_attention=bool(
-            model_config.get("modify_decoder_self_attention", True)
-        ),
     )
 
-    collator = EATBartDataCollator(
+    collator = BartDataCollator(
         tokenizer=tokenizer,
-        lexicon=lexicon,
         max_source_length=int(data_config.get("max_source_length", 256)),
-        max_target_length=int(data_config.get("max_target_length", 128)),
-        subword_strategy=data_config.get("subword_strategy", "single"),
+        max_target_length=int(data_config.get("max_target_length", 512)),
         decoder_start_token_id=model.config.decoder_start_token_id,
     )
 
     training_arguments = build_training_arguments(training_config)
+    early_stopping = EarlyStoppingCallback(
+        early_stopping_patience=int(training_config.get("early_stopping_patience", 2))
+    )
     return Seq2SeqTrainer(
         model=model,
         args=training_arguments,
@@ -96,6 +86,7 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
         eval_dataset=validation_dataset,
         data_collator=collator,
         processing_class=tokenizer,
+        callbacks=[early_stopping],
     )
 
 
@@ -110,19 +101,22 @@ def build_training_arguments(training_config: dict[str, Any]) -> Seq2SeqTraining
 
     use_fp16 = bool(training_config.get("fp16", False)) and torch.cuda.is_available()
     return Seq2SeqTrainingArguments(
-        output_dir=training_config.get("output_dir", "models/eat_bart"),
+        output_dir=training_config.get("output_dir", "models/bart_baseline"),
         per_device_train_batch_size=int(training_config.get("per_device_train_batch_size", 4)),
         per_device_eval_batch_size=int(training_config.get("per_device_eval_batch_size", 4)),
         gradient_accumulation_steps=int(training_config.get("gradient_accumulation_steps", 4)),
         learning_rate=float(training_config.get("learning_rate", 3e-5)),
-        num_train_epochs=float(training_config.get("num_train_epochs", 2)),
+        num_train_epochs=float(training_config.get("num_train_epochs", 50)),
         max_steps=int(training_config.get("max_steps", -1)),
         fp16=use_fp16,
         seed=int(training_config.get("seed", 42)),
         eval_strategy=training_config.get("eval_strategy", "epoch"),
         save_strategy=training_config.get("save_strategy", "epoch"),
-        logging_steps=int(training_config.get("logging_steps", 50)),
+        logging_strategy=training_config.get("logging_strategy", "epoch"),
         save_total_limit=int(training_config.get("save_total_limit", 2)),
+        load_best_model_at_end=bool(training_config.get("load_best_model_at_end", True)),
+        metric_for_best_model=training_config.get("metric_for_best_model", "eval_loss"),
+        greater_is_better=bool(training_config.get("greater_is_better", False)),
         predict_with_generate=bool(training_config.get("predict_with_generate", False)),
         remove_unused_columns=False,
         report_to=training_config.get("report_to", "none"),
@@ -132,6 +126,39 @@ def build_training_arguments(training_config: dict[str, Any]) -> Seq2SeqTraining
             training_config.get("dataloader_pin_memory", torch.cuda.is_available())
         ),
     )
+
+
+def _write_epoch_loss_report(trainer: Seq2SeqTrainer) -> Path:
+    """Write one row per epoch containing the available train and evaluation losses."""
+    losses_by_epoch: dict[float, dict[str, float]] = {}
+    for entry in trainer.state.log_history:
+        epoch = entry.get("epoch")
+        if epoch is None:
+            continue
+
+        epoch_value = float(epoch)
+        row = losses_by_epoch.setdefault(epoch_value, {})
+        if "loss" in entry:
+            row["loss"] = float(entry["loss"])
+        if "eval_loss" in entry:
+            row["eval_loss"] = float(entry["eval_loss"])
+
+    output_path = Path(trainer.args.output_dir) / "epoch_losses.csv"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=["epoch", "loss", "eval_loss"])
+        writer.writeheader()
+        for epoch in sorted(losses_by_epoch):
+            row = losses_by_epoch[epoch]
+            writer.writerow(
+                {
+                    "epoch": epoch,
+                    "loss": row.get("loss", ""),
+                    "eval_loss": row.get("eval_loss", ""),
+                }
+            )
+
+    return output_path
 
 
 def _require_file(path: str | Path, label: str) -> Path:

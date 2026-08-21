@@ -1,14 +1,7 @@
 model:
   name: facebook/bart-base
   local_files_only: true
-  add_prefix_space: true
-  emotion_dim: 8
-  emotion_hidden_dim: 32
-  alpha_init: 0.05
-  attention_formula: additive
-  modify_encoder_self_attention: true
-  modify_decoder_self_attention: true
-  modify_cross_attention: false
+  add_prefix_space: false
 
 data:
   dataset_path: data/processed/finalMentalHealthDataset-question-response.csv
@@ -16,26 +9,28 @@ data:
   response_column: response
   validation_size: 0.1
   test_size: 0.1
-  nrc_lexicon_path: data/raw/nrc_lexicon.csv
   max_source_length: 256
-  max_target_length: 128
-  subword_strategy: single
+  max_target_length: 512
   max_examples:
 
 training:
-  output_dir: models/eat_bart
+  output_dir: models/bart_baseline
   per_device_train_batch_size: 4
   per_device_eval_batch_size: 4
   gradient_accumulation_steps: 4
   learning_rate: 0.00003
-  num_train_epochs: 3
+  num_train_epochs: 50
   max_steps: -1
   fp16: true
   seed: 42
   eval_strategy: epoch
   save_strategy: epoch
-  logging_steps: 50
+  logging_strategy: epoch
   save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
+  early_stopping_patience: 2
   predict_with_generate: false
   report_to: none
   optim: adamw_torch

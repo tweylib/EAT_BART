@@ -1,12 +1,12 @@
 inherits: configs/default.yaml
 
 evaluation:
-  model_source: eat_checkpoint
-  checkpoint_path: models/eat_bart
-  output_path: reports/eat_bart_generations.csv
+  model_source: checkpoint
+  checkpoint_path: models/bart_baseline
+  output_path: reports/bart_baseline_generations.csv
   max_eval_examples: 50
   batch_size: 4
-  max_new_tokens: 128
+  max_new_tokens: 512
   num_beams: 4
   do_sample: false
   repetition_penalty: 1.2

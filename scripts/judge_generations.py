@@ -16,7 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Judge generated responses with an LLM.")
     parser.add_argument(
         "--config",
-        default="configs/kaggle_encoder_only_5epoch_experiment_judge_groq.yaml",
+        default="configs/kaggle_baseline_5epoch_experiment_judge_groq.yaml",
         help="Path to YAML config file.",
     )
     return parser.parse_args()

@@ -16,7 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Score generated response CSV.")
     parser.add_argument(
         "--config",
-        default="configs/kaggle_encoder_only_score.yaml",
+        default="configs/kaggle_baseline_5epoch_experiment_score.yaml",
         help="Path to YAML config file.",
     )
     return parser.parse_args()

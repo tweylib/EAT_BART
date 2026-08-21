@@ -1,1 +1,1 @@
-"""Modeling components for EAT-BART."""
+"""The baseline uses Hugging Face's unmodified BART implementation."""

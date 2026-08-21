@@ -1,8 +1,8 @@
-inherits: configs/kaggle_encoder_only.yaml
+inherits: configs/kaggle.yaml
 
 training:
-  output_dir: /kaggle/working/models/eat_bart_encoder_only_5epoch
-  num_train_epochs: 5
+  output_dir: /kaggle/working/models/bart_baseline_50epoch
+  num_train_epochs: 50
   learning_rate: 0.00003
   per_device_train_batch_size: 2
   per_device_eval_batch_size: 2
@@ -10,5 +10,5 @@ training:
   fp16: true
   eval_strategy: epoch
   save_strategy: epoch
+  logging_strategy: epoch
   save_total_limit: 2
-  logging_steps: 50

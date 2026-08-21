@@ -1,26 +1,38 @@
 import torch
 
-from eat_bart.data.collator import shift_emotion_features_right
+from eat_bart.data.collator import BartDataCollator
 
 
-def test_shift_emotion_features_right_aligns_with_decoder_inputs() -> None:
-    target_emotion_features = torch.tensor(
+class StubTokenizer:
+    pad_token_id = 1
+    eos_token_id = 2
+
+    def __call__(self, texts, **kwargs):
+        del kwargs
+        rows = [[0, 10 + index, 2] for index, _ in enumerate(texts)]
+        return {
+            "input_ids": torch.tensor(rows),
+            "attention_mask": torch.ones(len(rows), 3, dtype=torch.long),
+        }
+
+
+def test_standard_bart_collator_returns_only_native_model_inputs() -> None:
+    collator = BartDataCollator(tokenizer=StubTokenizer(), decoder_start_token_id=2)
+
+    batch = collator(
         [
-            [
-                [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                [2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                [3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            ]
+            {"question": "question one", "response": "response one"},
+            {"question": "question two", "response": "response two"},
         ]
     )
-    decoder_input_ids = torch.tensor([[2, 10, 1]])
 
-    shifted = shift_emotion_features_right(
-        target_emotion_features=target_emotion_features,
-        decoder_input_ids=decoder_input_ids,
-        pad_token_id=1,
-    )
-
-    assert torch.equal(shifted[0, 0], torch.zeros(8))
-    assert torch.equal(shifted[0, 1], target_emotion_features[0, 0])
-    assert torch.equal(shifted[0, 2], torch.zeros(8))
+    assert set(batch) == {
+        "input_ids",
+        "attention_mask",
+        "decoder_input_ids",
+        "decoder_attention_mask",
+        "labels",
+    }
+    assert all("emotion" not in key for key in batch)
+    assert tuple(batch["input_ids"].shape) == (2, 3)
+    assert tuple(batch["labels"].shape) == (2, 3)
