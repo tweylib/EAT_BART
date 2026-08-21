@@ -6,7 +6,7 @@ evaluation:
   output_path: reports/bart_baseline_generations.csv
   max_eval_examples: 50
   batch_size: 4
-  max_new_tokens: 128
+  max_new_tokens: 512
   num_beams: 4
   do_sample: false
   repetition_penalty: 1.2

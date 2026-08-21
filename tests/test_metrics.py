@@ -22,7 +22,7 @@ def test_compute_generation_metrics_scores_exact_match_high() -> None:
     assert metrics["empty_prediction_rate"] == 0.0
     assert "bertscore_f1" in metrics
     assert metrics["rouge_l_f1"] == pytest.approx(1.0)
-    assert metrics["bleu_4"] == pytest.approx(1.0)
+    assert metrics["bleu_4"] == pytest.approx(100.0)
     assert metrics["distinct_2"] == pytest.approx(1.0)
 
 

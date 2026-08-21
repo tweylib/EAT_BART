@@ -15,7 +15,7 @@ class BartDataCollator:
 
     tokenizer: Any
     max_source_length: int = 256
-    max_target_length: int = 128
+    max_target_length: int = 512
     decoder_start_token_id: int | None = None
 
     def __call__(self, examples: list[dict[str, str]]) -> dict[str, torch.Tensor]:

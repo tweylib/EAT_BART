@@ -148,7 +148,7 @@ def _generate_rows(
 
 def _build_generation_kwargs(evaluation_config: dict[str, Any]) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
-        "max_new_tokens": int(evaluation_config.get("max_new_tokens", 128)),
+        "max_new_tokens": int(evaluation_config.get("max_new_tokens", 512)),
         "num_beams": int(evaluation_config.get("num_beams", 4)),
         "do_sample": bool(evaluation_config.get("do_sample", False)),
     }

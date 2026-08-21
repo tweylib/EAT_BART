@@ -35,7 +35,9 @@ can import the worktrees consistently; it does not imply EAT is enabled here.
 
 ## Kaggle Protocol
 
-Train the 5-epoch baseline:
+Train the baseline for at most 50 epochs. Training stops after two consecutive
+epochs without an improvement in validation loss, and the trainer reloads the
+checkpoint with the lowest validation loss before saving the final model:
 
 ```bash
 python scripts/train.py --config configs/kaggle_baseline_5epoch.yaml
@@ -55,3 +57,8 @@ python scripts/judge_generations.py --config configs/kaggle_baseline_5epoch_expe
 python scripts/judge_generations.py --config configs/kaggle_baseline_5epoch_experiment_judge_groq_gpt_oss.yaml
 python scripts/aggregate_judges.py --config configs/kaggle_baseline_5epoch_experiment_judge_groq_2judge_aggregate.yaml
 ```
+
+Targets and generated responses are capped at 512 BART tokens. Automatic BLEU
+is computed with SacreBLEU and reported on its standard 0-100 scale.
+Training and evaluation losses are logged at every epoch and written together
+to `epoch_losses.csv` in the model output directory.

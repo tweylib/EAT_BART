@@ -1,9 +1,9 @@
 judge_aggregation:
-  output_path: /kaggle/working/reports/bart_baseline_5epoch_experiment_llm_judge_groq_2judge_aggregate.csv
+  output_path: /kaggle/working/reports/bart_baseline_50epoch_experiment_llm_judge_groq_2judge_aggregate.csv
   min_completion_rate: 0.0
   min_judged_examples: 1
   judges:
     - name: llama-3.3-70b-versatile
-      summary_path: /kaggle/working/reports/bart_baseline_5epoch_experiment_llm_judge_groq_summary.csv
+      summary_path: /kaggle/working/reports/bart_baseline_50epoch_experiment_llm_judge_groq_summary.csv
     - name: openai/gpt-oss-120b
-      summary_path: /kaggle/working/reports/bart_baseline_5epoch_experiment_llm_judge_groq_gpt_oss_summary.csv
+      summary_path: /kaggle/working/reports/bart_baseline_50epoch_experiment_llm_judge_groq_gpt_oss_summary.csv

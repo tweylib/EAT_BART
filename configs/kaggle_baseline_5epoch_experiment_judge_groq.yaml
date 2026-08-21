@@ -1,7 +1,7 @@
 llm_judge:
-  input_path: /kaggle/working/reports/bart_baseline_5epoch_experiment_generations.csv
-  output_path: /kaggle/working/reports/bart_baseline_5epoch_experiment_llm_judge_groq.csv
-  summary_output_path: /kaggle/working/reports/bart_baseline_5epoch_experiment_llm_judge_groq_summary.csv
+  input_path: /kaggle/working/reports/bart_baseline_50epoch_experiment_generations.csv
+  output_path: /kaggle/working/reports/bart_baseline_50epoch_experiment_llm_judge_groq.csv
+  summary_output_path: /kaggle/working/reports/bart_baseline_50epoch_experiment_llm_judge_groq_summary.csv
   provider: groq
   model: llama-3.3-70b-versatile
   api_key_env: GROQ_API_KEY
