@@ -42,3 +42,15 @@ def test_kaggle_baseline_experiment_uses_weighted_two_judge_aggregate() -> None:
 
     assert config["judge_aggregation"]["min_judged_examples"] == 1
     assert len(config["judge_aggregation"]["judges"]) == 2
+
+
+def test_both_kaggle_judges_use_the_full_test_generation_set() -> None:
+    llama_config = load_yaml_config(
+        "configs/kaggle_baseline_5epoch_experiment_judge_groq.yaml"
+    )
+    gpt_oss_config = load_yaml_config(
+        "configs/kaggle_baseline_5epoch_experiment_judge_groq_gpt_oss.yaml"
+    )
+
+    assert llama_config["llm_judge"]["max_examples"] is None
+    assert gpt_oss_config["llm_judge"]["max_examples"] is None

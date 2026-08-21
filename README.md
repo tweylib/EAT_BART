@@ -58,6 +58,8 @@ python scripts/judge_generations.py --config configs/kaggle_baseline_5epoch_expe
 python scripts/aggregate_judges.py --config configs/kaggle_baseline_5epoch_experiment_judge_groq_2judge_aggregate.yaml
 ```
 
+Both judges process the complete generated test set.
+
 Targets and generated responses are capped at 512 BART tokens. Automatic BLEU
 is computed with SacreBLEU and reported on its standard 0-100 scale.
 Training and evaluation losses are logged at every epoch and written together

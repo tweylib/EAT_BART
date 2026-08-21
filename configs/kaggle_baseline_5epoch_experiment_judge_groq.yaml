@@ -8,7 +8,7 @@ llm_judge:
   question_column: question
   prediction_column: generated_response
   reference_column: reference_response
-  max_examples: 100
+  max_examples:
   sleep_seconds: 1.0
   temperature: 0.0
   timeout_seconds: 60
