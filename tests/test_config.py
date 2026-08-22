@@ -14,10 +14,10 @@ def test_kaggle_config_inherits_default_config() -> None:
 def test_kaggle_baseline_5epoch_matches_comparison_training_protocol() -> None:
     config = load_yaml_config("configs/kaggle_baseline_5epoch.yaml")
 
-    assert config["training"]["num_train_epochs"] == 50
+    assert config["training"]["num_train_epochs"] == 40
     assert config["training"]["learning_rate"] == 0.00003
     assert config["training"]["gradient_accumulation_steps"] == 8
-    assert config["training"]["output_dir"] == "/kaggle/working/models/bart_baseline_50epoch"
+    assert config["training"]["output_dir"] == "/kaggle/working/models/bart_baseline_40epoch"
     assert config["training"]["load_best_model_at_end"] is True
     assert config["training"]["metric_for_best_model"] == "eval_loss"
     assert config["training"]["greater_is_better"] is False
@@ -30,7 +30,7 @@ def test_kaggle_baseline_experiment_evaluate_uses_full_test_split() -> None:
     config = load_yaml_config("configs/kaggle_baseline_5epoch_experiment_evaluate.yaml")
 
     assert config["evaluation"]["model_source"] == "checkpoint"
-    assert config["evaluation"]["checkpoint_path"] == "/kaggle/working/models/bart_baseline_50epoch"
+    assert config["evaluation"]["checkpoint_path"] == "/kaggle/working/models/bart_baseline_40epoch"
     assert config["evaluation"]["max_eval_examples"] is None
     assert config["evaluation"]["max_new_tokens"] == 512
 

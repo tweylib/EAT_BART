@@ -35,7 +35,7 @@ can import the worktrees consistently; it does not imply EAT is enabled here.
 
 ## Kaggle Protocol
 
-Train the baseline for at most 50 epochs. Training stops after two consecutive
+Train the baseline for at most 40 epochs. Training stops after two consecutive
 epochs without an improvement in validation loss, and the trainer reloads the
 checkpoint with the lowest validation loss before saving the final model:
 
