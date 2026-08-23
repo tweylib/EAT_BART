@@ -165,7 +165,7 @@ def eat_eager_attention_forward(
     dropout: float = 0.0,
     **_: Any,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Compute attention with emotion scores added before mask application.
+    """Compute standard and emotion distributions, then mix without another softmax.
 
     query shape: [batch_size, num_heads, tgt_len, head_dim]
     key shape: [batch_size, num_heads, src_len, head_dim]
@@ -178,7 +178,7 @@ def eat_eager_attention_forward(
     # attn_weights shape: [batch_size, num_heads, tgt_len, src_len]
     attn_weights = torch.matmul(query, key.transpose(2, 3)) * scaling
 
-    if emotion_scores is not None:
+    if emotion_scores is not None and module.emotion_interaction.config.formula != "probability_mix":
         attn_weights = module.emotion_interaction.combine_with_attention_scores(
             attention_scores=attn_weights,
             emotion_scores=emotion_scores,
@@ -188,7 +188,17 @@ def eat_eager_attention_forward(
         mask = _attention_mask_to_bool(attention_mask)
         attn_weights = attn_weights.masked_fill(mask, torch.finfo(attn_weights.dtype).min)
 
-    attn_weights = nn.functional.softmax(attn_weights, dim=-1)
+    standard_probabilities = nn.functional.softmax(attn_weights, dim=-1)
+    if emotion_scores is not None and module.emotion_interaction.config.formula == "probability_mix":
+        if attention_mask is not None:
+            emotion_scores = emotion_scores.masked_fill(
+                _attention_mask_to_bool(attention_mask), torch.finfo(emotion_scores.dtype).min
+            )
+        emotion_probabilities = nn.functional.softmax(emotion_scores, dim=-1)
+        alpha = module.emotion_interaction.alpha.to(standard_probabilities.dtype)
+        attn_weights = (1.0 - alpha) * standard_probabilities + alpha * emotion_probabilities
+    else:
+        attn_weights = standard_probabilities
     attn_weights = nn.functional.dropout(attn_weights, p=dropout, training=module.training)
 
     # attn_output shape: [batch_size, num_heads, tgt_len, head_dim]

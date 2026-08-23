@@ -12,6 +12,7 @@ from transformers.models.bart.modeling_bart import (
 )
 
 from eat_bart.modeling.eat_bart_attention import EATBartAttention
+from eat_bart.data.contextual_emotion import align_hidden_states
 
 
 def enable_eat_forwarding(model: object) -> object:
@@ -46,8 +47,31 @@ class EATBartForConditionalGeneration(BartForConditionalGeneration):
         use_cache: bool | None = None,
         encoder_emotion_features: torch.Tensor | None = None,
         decoder_emotion_features: torch.Tensor | None = None,
+        emotion_input_ids: torch.LongTensor | None = None,
+        emotion_attention_mask: torch.Tensor | None = None,
+        bart_to_emotion_alignment: torch.Tensor | None = None,
+        aligned_emotion_hidden_states: torch.Tensor | None = None,
         **kwargs: Any,
     ) -> Any:
+        if aligned_emotion_hidden_states is not None:
+            # Cached states are already BART-aligned E in R^[B,L,768].
+            encoder_emotion_features = aligned_emotion_hidden_states
+        elif emotion_input_ids is not None:
+            extractor = getattr(self, "contextual_emotion_encoder", None)
+            if extractor is None or bart_to_emotion_alignment is None:
+                raise ValueError("Contextual emotion inputs require encoder and alignment.")
+            extractor.eval()
+            with torch.no_grad():
+                outputs = extractor(
+                    input_ids=emotion_input_ids,
+                    attention_mask=emotion_attention_mask,
+                    output_hidden_states=True,
+                    return_dict=True,
+                )
+                contextual = outputs.hidden_states[-1]
+                aligned = align_hidden_states(contextual, bart_to_emotion_alignment)
+            encoder_emotion_features = aligned
+
         with _route_emotion_features(
             self,
             encoder_emotion_features=encoder_emotion_features,

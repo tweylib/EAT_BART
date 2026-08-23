@@ -6,14 +6,20 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from transformers import EarlyStoppingCallback, Seq2SeqTrainer, Seq2SeqTrainingArguments
 
 from eat_bart.data.collator import EATBartDataCollator
+from eat_bart.data.contextual_emotion import load_or_build_contextual_cache
 from eat_bart.data.dataset import MentalHealthResponseDataset, split_dataset
 from eat_bart.data.emotion_lexicon import load_nrc_lexicon
 from eat_bart.data.tokenizer import load_bart_tokenizer
 from eat_bart.modeling.eat_attention import EATAttentionConfig
-from eat_bart.modeling.eat_bart_model import DEFAULT_MODEL_NAME, load_eat_bart_model
+from eat_bart.modeling.eat_bart_model import (
+    DEFAULT_MODEL_NAME,
+    load_eat_bart_from_baseline_checkpoint,
+    load_eat_bart_model,
+)
 from eat_bart.training.eat_signal import calculate_encoder_eat_signal, write_eat_signal_csv
 from eat_bart.training.optimizer import DifferentialLearningRateTrainer
 from eat_bart.utils.config import load_yaml_config
@@ -39,7 +45,7 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
     set_seed(seed)
 
     dataset_path = _require_file(data_config["dataset_path"], "dataset CSV")
-    lexicon_path = _require_file(data_config["nrc_lexicon_path"], "NRC lexicon CSV")
+    feature_source = model_config.get("emotion_feature_source", "lexicon")
 
     dataset = MentalHealthResponseDataset.from_csv(
         path=dataset_path,
@@ -56,31 +62,75 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
 
     model_name = model_config.get("name", DEFAULT_MODEL_NAME)
     local_files_only = bool(model_config.get("local_files_only", False))
+    baseline_checkpoint_path = model_config.get("baseline_checkpoint_path")
+    tokenizer_source = baseline_checkpoint_path or model_name
     tokenizer = load_bart_tokenizer(
-        model_name,
+        tokenizer_source,
         local_files_only=local_files_only,
         add_prefix_space=bool(model_config.get("add_prefix_space", True)),
     )
 
-    lexicon = load_nrc_lexicon(lexicon_path)
+    lexicon = {}
+    if feature_source == "lexicon":
+        lexicon_path = _require_file(data_config["nrc_lexicon_path"], "NRC lexicon CSV")
+        lexicon = load_nrc_lexicon(lexicon_path)
     eat_config = EATAttentionConfig(
         num_heads=12,
         emotion_dim=int(model_config.get("emotion_dim", 8)),
         emotion_hidden_dim=int(model_config.get("emotion_hidden_dim", 32)),
-        alpha_init=float(model_config.get("alpha_init", 0.05)),
+        alpha_init=float(model_config.get("alpha", model_config.get("alpha_init", 0.05))),
         formula=model_config.get("attention_formula", "additive"),
     )
-    model = load_eat_bart_model(
-        model_name=model_name,
-        eat_config=eat_config,
-        local_files_only=local_files_only,
-        modify_encoder_self_attention=bool(
-            model_config.get("modify_encoder_self_attention", True)
-        ),
-        modify_decoder_self_attention=bool(
-            model_config.get("modify_decoder_self_attention", True)
-        ),
-    )
+    if baseline_checkpoint_path:
+        model = load_eat_bart_from_baseline_checkpoint(
+            baseline_checkpoint_path, eat_config=eat_config, local_files_only=True
+        )
+    else:
+        model = load_eat_bart_model(
+            model_name=model_name, eat_config=eat_config, local_files_only=local_files_only,
+            modify_encoder_self_attention=bool(model_config.get("modify_encoder_self_attention", True)),
+            modify_decoder_self_attention=bool(model_config.get("modify_decoder_self_attention", True)),
+        )
+
+    emotion_tokenizer = None
+    contextual_cache = None
+    if feature_source == "goemotions_contextual":
+        emotion_model_name = model_config.get("emotion_model_name", "SamLowe/roberta-base-go_emotions")
+        emotion_tokenizer = AutoTokenizer.from_pretrained(
+            emotion_model_name, local_files_only=local_files_only, use_fast=True,
+            add_prefix_space=bool(model_config.get("add_prefix_space", True)),
+        )
+        emotion_model = AutoModelForSequenceClassification.from_pretrained(
+            emotion_model_name, local_files_only=local_files_only
+        )
+        emotion_model.eval()
+        emotion_model.requires_grad_(False)
+        emotion_hidden_size = int(emotion_model.config.hidden_size)
+        configured_emotion_dim = int(model_config.get("emotion_dim", emotion_hidden_size))
+        if configured_emotion_dim != emotion_hidden_size:
+            raise ValueError(
+                "Without W_E, model.emotion_dim must equal the GoEmotions hidden size "
+                f"({emotion_hidden_size}), got {configured_emotion_dim}."
+            )
+        cache_config = data_config.get("contextual_emotion_cache", {})
+        if bool(cache_config.get("enabled", False)):
+            all_questions = [example.question for example in dataset.examples]
+            cache_device = "cuda" if torch.cuda.is_available() else "cpu"
+            contextual_cache = load_or_build_contextual_cache(
+                texts=all_questions, bart_tokenizer=tokenizer,
+                emotion_tokenizer=emotion_tokenizer, emotion_model=emotion_model,
+                model_name=emotion_model_name, cache_path=cache_config["path"],
+                max_length=int(data_config.get("max_source_length", 256)),
+                batch_size=int(cache_config.get("batch_size", 32)),
+                dtype=torch.float16, device=cache_device,
+            )
+            del emotion_model
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        else:
+            model.contextual_emotion_encoder = emotion_model
+        if bool(model_config.get("freeze_bart", False)):
+            freeze_bart_for_eat_only_training(model)
 
     collator = EATBartDataCollator(
         tokenizer=tokenizer,
@@ -89,6 +139,9 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
         max_target_length=int(data_config.get("max_target_length", 128)),
         subword_strategy=data_config.get("subword_strategy", "single"),
         decoder_start_token_id=model.config.decoder_start_token_id,
+        emotion_feature_source=feature_source,
+        emotion_tokenizer=emotion_tokenizer,
+        contextual_emotion_cache=contextual_cache,
     )
 
     training_arguments = build_training_arguments(training_config)
@@ -98,14 +151,13 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
     if "eat_learning_rate" in training_config or "alpha_learning_rate" in training_config:
         trainer_class = DifferentialLearningRateTrainer
         base_learning_rate = float(training_config.get("learning_rate", 3e-5))
-        trainer_kwargs.update(
-            eat_learning_rate=float(
-                training_config.get("eat_learning_rate", base_learning_rate)
-            ),
-            alpha_learning_rate=float(
-                training_config.get("alpha_learning_rate", base_learning_rate)
-            ),
+        trainer_kwargs["eat_learning_rate"] = float(
+            training_config.get("eat_learning_rate", base_learning_rate)
         )
+        if model_config.get("attention_formula", "additive") != "probability_mix":
+            trainer_kwargs["alpha_learning_rate"] = float(
+                training_config.get("alpha_learning_rate", base_learning_rate)
+            )
 
     return trainer_class(
         model=model,
@@ -117,6 +169,18 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
         callbacks=callbacks,
         **trainer_kwargs,
     )
+
+
+def freeze_bart_for_eat_only_training(model: torch.nn.Module) -> None:
+    """Freeze BART and leave only encoder EAT W1 and W2 trainable."""
+    model.requires_grad_(False)
+    bart_model = getattr(model, "model", model)
+    for layer in bart_model.encoder.layers:
+        interaction = getattr(layer.self_attn, "emotion_interaction", None)
+        if interaction is None:
+            raise ValueError("Every patched encoder layer must contain emotion_interaction.")
+        interaction.w1_s.requires_grad_(True)
+        interaction.w2_s.requires_grad_(True)
 
 
 def build_training_arguments(training_config: dict[str, Any]) -> Seq2SeqTrainingArguments:

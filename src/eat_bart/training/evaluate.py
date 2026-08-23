@@ -10,6 +10,7 @@ import torch
 from transformers import BartForConditionalGeneration
 
 from eat_bart.data.dataset import MentalHealthResponseDataset, split_dataset
+from eat_bart.data.contextual_emotion import contextual_cache_fingerprint, load_contextual_cache
 from eat_bart.data.emotion_features import tokenize_texts_with_emotion_features
 from eat_bart.data.emotion_lexicon import load_nrc_lexicon
 from eat_bart.data.tokenizer import load_bart_tokenizer
@@ -36,7 +37,7 @@ def run_generation(config: dict[str, Any]) -> Path:
     set_seed(seed)
 
     dataset_path = _require_file(data_config["dataset_path"], "dataset CSV")
-    lexicon_path = _require_file(data_config["nrc_lexicon_path"], "NRC lexicon CSV")
+    feature_source = model_config.get("emotion_feature_source", "lexicon")
     model_source = evaluation_config.get("model_source", "eat_checkpoint")
     checkpoint_path = None
     if model_source == "eat_checkpoint":
@@ -62,17 +63,34 @@ def run_generation(config: dict[str, Any]) -> Path:
     model_name = model_config.get("name", DEFAULT_MODEL_NAME)
     local_files_only = bool(model_config.get("local_files_only", False))
     tokenizer = load_bart_tokenizer(
-        model_name,
+        model_config.get("baseline_checkpoint_path", model_name),
         local_files_only=local_files_only,
         add_prefix_space=bool(model_config.get("add_prefix_space", True)),
     )
 
-    lexicon = load_nrc_lexicon(lexicon_path)
+    lexicon = {}
+    contextual_cache = None
+    if feature_source == "lexicon":
+        lexicon_path = _require_file(data_config["nrc_lexicon_path"], "NRC lexicon CSV")
+        lexicon = load_nrc_lexicon(lexicon_path)
+    elif feature_source == "goemotions_contextual":
+        cache_config = data_config.get("contextual_emotion_cache", {})
+        cache_path = _require_file(cache_config["path"], "contextual emotion cache")
+        all_questions = [example.question for example in dataset.examples]
+        fingerprint = contextual_cache_fingerprint(
+            all_questions,
+            model_config.get("emotion_model_name", "SamLowe/roberta-base-go_emotions"),
+            int(data_config.get("max_source_length", 256)),
+            bool(getattr(tokenizer, "add_prefix_space", False)),
+        )
+        contextual_cache = load_contextual_cache(cache_path, fingerprint)
+    else:
+        raise ValueError(f"Unsupported emotion_feature_source: {feature_source}")
     eat_config = EATAttentionConfig(
         num_heads=12,
         emotion_dim=int(model_config.get("emotion_dim", 8)),
         emotion_hidden_dim=int(model_config.get("emotion_hidden_dim", 32)),
-        alpha_init=float(model_config.get("alpha_init", 0.05)),
+        alpha_init=float(model_config.get("alpha", model_config.get("alpha_init", 0.05))),
         formula=model_config.get("attention_formula", "additive"),
     )
 
@@ -108,6 +126,8 @@ def run_generation(config: dict[str, Any]) -> Path:
         data_config=data_config,
         evaluation_config=evaluation_config,
         use_emotion_encoder=use_emotion_encoder,
+        emotion_feature_source=feature_source,
+        contextual_cache=contextual_cache,
     )
 
     output_path = Path(evaluation_config.get("output_path", "reports/eat_bart_generations.csv"))
@@ -125,6 +145,8 @@ def _generate_rows(
     data_config: dict[str, Any],
     evaluation_config: dict[str, Any],
     use_emotion_encoder: bool,
+    emotion_feature_source: str = "lexicon",
+    contextual_cache: dict[str, torch.Tensor] | None = None,
 ) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     batch_size = int(evaluation_config.get("batch_size", 4))
@@ -134,15 +156,28 @@ def _generate_rows(
         questions = [example["question"] for example in batch_examples]
         references = [example["response"] for example in batch_examples]
 
-        encoded, encoder_emotion_features = tokenize_texts_with_emotion_features(
-            texts=questions,
-            tokenizer=tokenizer,
-            lexicon=lexicon,
-            max_length=int(data_config.get("max_source_length", 256)),
-            padding=True,
-            truncation=True,
-            strategy=data_config.get("subword_strategy", "single"),
-        )
+        if emotion_feature_source == "goemotions_contextual":
+            if contextual_cache is None:
+                raise ValueError("Contextual evaluation requires the aligned feature cache.")
+            encoded = tokenizer(
+                questions, max_length=int(data_config.get("max_source_length", 256)),
+                padding=True, truncation=True, return_tensors="pt",
+            )
+            seq_len = encoded["input_ids"].size(1)
+            feature_rows = []
+            for question in questions:
+                cached = contextual_cache[question]
+                row = torch.zeros(seq_len, cached.size(-1), dtype=cached.dtype)
+                row[: min(seq_len, cached.size(0))] = cached[:seq_len]
+                feature_rows.append(row)
+            encoder_emotion_features = torch.stack(feature_rows)
+        else:
+            encoded, encoder_emotion_features = tokenize_texts_with_emotion_features(
+                texts=questions, tokenizer=tokenizer, lexicon=lexicon,
+                max_length=int(data_config.get("max_source_length", 256)),
+                padding=True, truncation=True,
+                strategy=data_config.get("subword_strategy", "single"),
+            )
         encoded = {key: value.to(device) for key, value in encoded.items()}
         encoder_emotion_features = encoder_emotion_features.to(device)
 

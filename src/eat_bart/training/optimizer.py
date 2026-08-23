@@ -19,7 +19,7 @@ class DifferentialLearningRateTrainer(Seq2SeqTrainer):
         self,
         *args: Any,
         eat_learning_rate: float,
-        alpha_learning_rate: float,
+        alpha_learning_rate: float | None = None,
         **kwargs: Any,
     ) -> None:
         self.eat_learning_rate = eat_learning_rate
@@ -52,14 +52,15 @@ def build_differential_parameter_groups(
     model: torch.nn.Module,
     bart_learning_rate: float,
     eat_learning_rate: float,
-    alpha_learning_rate: float,
+    alpha_learning_rate: float | None,
     weight_decay: float = 0.0,
     decay_parameter_names: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Split trainable parameters by ownership and optional weight-decay behavior."""
     _validate_learning_rate("bart_learning_rate", bart_learning_rate)
     _validate_learning_rate("eat_learning_rate", eat_learning_rate)
-    _validate_learning_rate("alpha_learning_rate", alpha_learning_rate)
+    if alpha_learning_rate is not None:
+        _validate_learning_rate("alpha_learning_rate", alpha_learning_rate)
 
     decay_names = set(decay_parameter_names or ())
     grouped: dict[tuple[str, bool], list[torch.nn.Parameter]] = {}
@@ -74,7 +75,8 @@ def build_differential_parameter_groups(
         grouped.setdefault((category, use_decay), []).append(parameter)
         category_counts[category] += parameter.numel()
 
-    missing_categories = [name for name, count in category_counts.items() if count == 0]
+    required_categories = ("bart", "eat", "alpha") if alpha_learning_rate is not None else ("bart", "eat")
+    missing_categories = [name for name in required_categories if category_counts[name] == 0]
     if missing_categories:
         missing = ", ".join(missing_categories)
         raise ValueError(f"Differential optimizer found no trainable parameters for: {missing}")
