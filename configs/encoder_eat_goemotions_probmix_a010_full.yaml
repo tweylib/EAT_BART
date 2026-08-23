@@ -1,0 +1,21 @@
+inherits: configs/encoder_eat_goemotions_probmix_a010.yaml
+
+training:
+  output_dir: /kaggle/working/models/encoder_eat_goemotions_probmix_a010_full
+  max_steps: -1
+  num_train_epochs: 40
+  save_model: true
+  learning_rate: 0.0003
+  eval_strategy: epoch
+  save_strategy: epoch
+  save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
+  early_stopping_patience: 2
+  early_stopping_threshold: 0.0
+
+eat_signal:
+  enabled: true
+  output_path: /kaggle/working/reports/encoder_eat_goemotions_probmix_a010_full_r_h.csv
+  max_batches: 50

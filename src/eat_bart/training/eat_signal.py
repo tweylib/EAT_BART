@@ -70,7 +70,12 @@ def calculate_encoder_eat_signal(
         attention_scores = torch.matmul(query, key.transpose(2, 3)) * module.scaling
         emotion_scores = module.emotion_interaction(emotion_features)
         # scaled_emotion_scores shape: [batch_size, num_heads, seq_len, seq_len]
-        alpha = module.emotion_interaction.alpha.view(1, -1, 1, 1)
+        alpha_value = module.emotion_interaction.alpha
+        alpha = (
+            alpha_value.view(1, 1, 1, 1)
+            if alpha_value.dim() == 0
+            else alpha_value.view(1, -1, 1, 1)
+        )
         scaled_emotion_scores = alpha * emotion_scores
 
         # valid_pairs shape: [batch_size, 1, seq_len, seq_len]
@@ -120,7 +125,12 @@ def calculate_encoder_eat_signal(
                     break
 
                 current_attention_mask = batch["attention_mask"].to(device)
-                emotion_features = batch["encoder_emotion_features"].to(device)
+                emotion_features = batch.get("encoder_emotion_features")
+                if emotion_features is None:
+                    emotion_features = batch.get("aligned_emotion_hidden_states")
+                if emotion_features is None:
+                    raise ValueError("Batch contains no encoder emotion representations.")
+                emotion_features = emotion_features.to(device)
                 input_ids = batch["input_ids"].to(device)
 
                 # emotional_tokens shape: [batch_size, seq_len]
@@ -168,7 +178,9 @@ def calculate_encoder_eat_signal(
                     "layer": _layer_index(name),
                     "head": head,
                     "alpha": float(
-                        module.emotion_interaction.alpha[head].detach().cpu().item()
+                        module.emotion_interaction.alpha.detach().cpu().item()
+                        if module.emotion_interaction.alpha.dim() == 0
+                        else module.emotion_interaction.alpha[head].detach().cpu().item()
                     ),
                     "mean_abs_attention_score": mean_attention,
                     "mean_abs_scaled_emotion_score": mean_emotion,
