@@ -3,7 +3,7 @@ inherits: configs/kaggle.yaml
 model:
   emotion_feature_source: goemotions_contextual
   emotion_model_name: SamLowe/roberta-base-go_emotions
-  baseline_checkpoint_path: /kaggle/input/models/bart_baseline
+  baseline_checkpoint_path: /kaggle/input/datasets/cheikhmohamedahid/baseline-results-5epochs/models/bart_baseline_5epoch
   freeze_bart: true
   emotion_dim: 768
   emotion_hidden_dim: 32
