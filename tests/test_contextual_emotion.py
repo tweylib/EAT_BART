@@ -5,10 +5,9 @@ import torch
 from eat_bart.data.contextual_emotion import (
     align_hidden_states,
     build_offset_alignment,
-    canonicalize_texts_for_baseline,
     contextual_cache_fingerprint,
+    tokenize_and_align_contextual_emotion,
 )
-from eat_bart.data.emotion_features import split_text_for_emotion
 from eat_bart.data.tokenizer import load_bart_tokenizer
 from eat_bart.modeling.eat_attention import EATAttentionConfig
 from eat_bart.modeling.eat_bart_attention import EATBartAttention, eat_eager_attention_forward
@@ -37,31 +36,32 @@ def test_offset_alignment_mean_pools_overlapping_subtokens() -> None:
     assert diagnostics.coverage == 1.0
 
 
-def test_canonical_contextual_source_preserves_baseline_bart_input_ids() -> None:
-    tokenizer = load_bart_tokenizer("facebook/bart-base", local_files_only=True)
+def test_contextual_source_preserves_standard_baseline_raw_input_ids() -> None:
+    tokenizer = load_bart_tokenizer(
+        "facebook/bart-base", local_files_only=True, add_prefix_space=False
+    )
     texts = [
         "What is a panic attack?",
         "I can't sleep—I'm OVERWHELMED!",
         "Post-traumatic stress, anxiety, and loneliness.",
     ]
     baseline = tokenizer(
-        [split_text_for_emotion(text) for text in texts],
-        is_split_into_words=True,
-        truncation=True,
-        max_length=256,
+        texts, truncation=True, max_length=256, padding=True, return_tensors="pt"
     )
-    contextual = tokenizer(
-        canonicalize_texts_for_baseline(texts), truncation=True, max_length=256
+    contextual, _, _, diagnostics = tokenize_and_align_contextual_emotion(
+        texts, tokenizer, tokenizer, max_length=256, padding=True
     )
-    assert contextual["input_ids"] == baseline["input_ids"]
-    assert contextual["attention_mask"] == baseline["attention_mask"]
+    assert torch.equal(contextual["input_ids"], baseline["input_ids"])
+    assert torch.equal(contextual["attention_mask"], baseline["attention_mask"])
+    assert diagnostics.coverage == 1.0
 
 
-def test_cache_v2_fingerprint_differs_from_previous_raw_text_scheme() -> None:
-    fingerprint = contextual_cache_fingerprint(["Question"], "model", 256, True)
+def test_cache_v3_fingerprint_covers_raw_text_and_tokenizer_settings() -> None:
+    fingerprint = contextual_cache_fingerprint(["Question"], "model", 256, False)
     assert fingerprint != ""
     # Changing only case changes the source key and cannot silently reuse features.
-    assert fingerprint != contextual_cache_fingerprint(["question"], "model", 256, True)
+    assert fingerprint != contextual_cache_fingerprint(["question"], "model", 256, False)
+    assert fingerprint != contextual_cache_fingerprint(["Question"], "model", 256, True)
 
 
 def _probability_mix(alpha: float):
@@ -122,7 +122,11 @@ def test_cached_collator_pads_aligned_states_to_bart_length() -> None:
         pad_token_id = 1
         eos_token_id = 2
 
+        def __init__(self):
+            self.calls = []
+
         def __call__(self, texts, **kwargs):
+            self.calls.append(list(texts))
             length = max(4 if "long" in text else 3 for text in texts)
             ids = torch.ones(len(texts), length, dtype=torch.long)
             mask = torch.zeros_like(ids)
@@ -143,14 +147,14 @@ def test_cached_collator_pads_aligned_states_to_bart_length() -> None:
         tokenizer=tokenizer, lexicon={}, emotion_feature_source="goemotions_contextual",
         contextual_emotion_cache=cache,
     )
-    # Patch target feature tokenization is out of scope for this focused source-cache test.
-    collator.emotion_feature_source = "goemotions_contextual"
-    source = tokenizer(["short", "long question"])
-    rows = []
-    for text_value in ("short", "long question"):
-        row = torch.zeros(source["input_ids"].size(1), 768, dtype=torch.float16)
-        row[: cache[text_value].size(0)] = cache[text_value]
-        rows.append(row)
-    result = torch.stack(rows)
-    assert result.shape == (2, 4, 768)
-    assert torch.count_nonzero(result[0, 3]) == 0
+    result = collator(
+        [
+            {"question": "short", "response": "Mixed CASE response!"},
+            {"question": "long question", "response": "Another response."},
+        ]
+    )
+    assert tokenizer.calls[0] == ["short", "long question"]
+    assert tokenizer.calls[1] == ["Mixed CASE response!", "Another response."]
+    assert result["aligned_emotion_hidden_states"].shape == (2, 4, 768)
+    assert torch.count_nonzero(result["aligned_emotion_hidden_states"][0, 3]) == 0
+    assert "decoder_emotion_features" not in result

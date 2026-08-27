@@ -84,3 +84,18 @@ def test_differential_lr_early_stopping_experiment_protocol() -> None:
     assert arguments.greater_is_better is False
     assert len(callbacks) == 1
     assert callbacks[0].early_stopping_patience == 2
+
+
+def test_contextual_eat_uses_standard_baseline_tokenization_contract() -> None:
+    training_config = load_yaml_config(
+        "configs/encoder_eat_goemotions_probmix_a010_full.yaml"
+    )
+    evaluation_config = load_yaml_config(
+        "configs/encoder_eat_goemotions_probmix_a010_full_experiment_evaluate.yaml"
+    )
+
+    assert training_config["model"]["add_prefix_space"] is False
+    assert training_config["data"]["max_source_length"] == 256
+    assert training_config["data"]["max_target_length"] == 512
+    assert "raw_aligned" in training_config["data"]["contextual_emotion_cache"]["path"]
+    assert evaluation_config["evaluation"]["max_new_tokens"] == 512

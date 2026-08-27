@@ -9,8 +9,6 @@ from typing import Any, Sequence
 
 import torch
 
-from eat_bart.data.emotion_features import split_text_for_emotion
-
 
 @dataclass(frozen=True)
 class AlignmentDiagnostics:
@@ -31,32 +29,21 @@ def tokenize_and_align_contextual_emotion(
     max_length: int,
     padding: bool | str = True,
 ) -> tuple[Any, Any, torch.Tensor, AlignmentDiagnostics]:
-    """Tokenize baseline-canonical text and return RoBERTa-to-BART pooling weights.
+    """Tokenize raw baseline text and return RoBERTa-to-BART pooling weights.
 
     alignment shape: [batch_size, bart_seq_len, emotion_seq_len]. Every valid
     non-special BART token has a row summing to one. Special/padding rows are zero.
     """
-    canonical_texts = canonicalize_texts_for_baseline(texts)
     options = dict(max_length=max_length, padding=padding, truncation=True,
                    return_offsets_mapping=True, return_tensors="pt")
-    bart = bart_tokenizer(canonical_texts, **options)
-    emotion = emotion_tokenizer(canonical_texts, **options)
+    bart = bart_tokenizer(list(texts), **options)
+    emotion = emotion_tokenizer(list(texts), **options)
     bart_offsets = bart.pop("offset_mapping")
     emotion_offsets = emotion.pop("offset_mapping")
     alignment, diagnostics = build_offset_alignment(
         bart_offsets, emotion_offsets, bart["attention_mask"], emotion["attention_mask"]
     )
     return bart, emotion, alignment, diagnostics
-
-
-def canonicalize_texts_for_baseline(texts: Sequence[str]) -> list[str]:
-    """Recreate the exact text stream used by the original lexicon collator.
-
-    Tokenizing these strings normally with BART is empirically identical to
-    tokenizing split_text_for_emotion(text) with is_split_into_words=True.
-    """
-    return [" ".join(split_text_for_emotion(text)) for text in texts]
-
 
 def build_offset_alignment(
     bart_offsets: torch.Tensor,
@@ -109,8 +96,8 @@ def contextual_cache_fingerprint(
 ) -> str:
     """Return a stable key covering every input and tokenization-affecting setting."""
     digest = hashlib.sha256()
-    # v2 switches contextual extraction to the baseline-canonical source stream.
-    digest.update(f"{model_name}\0{max_length}\0{add_prefix_space}\0v2".encode())
+    # v3 restores the standard BART baseline's raw-text tokenization stream.
+    digest.update(f"{model_name}\0{max_length}\0{add_prefix_space}\0v3".encode())
     for value in texts:
         digest.update(value.encode("utf-8"))
         digest.update(b"\0")

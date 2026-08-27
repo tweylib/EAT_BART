@@ -11,7 +11,6 @@ from transformers import BartForConditionalGeneration
 
 from eat_bart.data.dataset import MentalHealthResponseDataset, split_dataset
 from eat_bart.data.contextual_emotion import (
-    canonicalize_texts_for_baseline,
     contextual_cache_fingerprint,
     load_contextual_cache,
 )
@@ -164,7 +163,7 @@ def _generate_rows(
             if contextual_cache is None:
                 raise ValueError("Contextual evaluation requires the aligned feature cache.")
             encoded = tokenizer(
-                canonicalize_texts_for_baseline(questions),
+                questions,
                 max_length=int(data_config.get("max_source_length", 256)),
                 padding=True, truncation=True, return_tensors="pt",
             )
