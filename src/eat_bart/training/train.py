@@ -106,7 +106,7 @@ def build_training_arguments(training_config: dict[str, Any]) -> Seq2SeqTraining
         per_device_eval_batch_size=int(training_config.get("per_device_eval_batch_size", 4)),
         gradient_accumulation_steps=int(training_config.get("gradient_accumulation_steps", 4)),
         learning_rate=float(training_config.get("learning_rate", 3e-5)),
-        num_train_epochs=float(training_config.get("num_train_epochs", 40)),
+        num_train_epochs=float(training_config.get("num_train_epochs", 30)),
         max_steps=int(training_config.get("max_steps", -1)),
         fp16=use_fp16,
         seed=int(training_config.get("seed", 42)),
