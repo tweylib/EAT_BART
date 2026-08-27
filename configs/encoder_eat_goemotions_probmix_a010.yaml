@@ -23,5 +23,5 @@ training:
 data:
   contextual_emotion_cache:
     enabled: true
-    path: /kaggle/working/cache/goemotions_aligned_fp16.pt
+    path: /kaggle/working/cache/goemotions_baseline_canonical_aligned_fp16_v2.pt
     batch_size: 32

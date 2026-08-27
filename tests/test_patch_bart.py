@@ -1,10 +1,12 @@
 from pathlib import Path
+import copy
 
 import torch
 from transformers import BartConfig, BartForConditionalGeneration
 from transformers.models.bart.modeling_bart import BartAttention
 
 from eat_bart.modeling.eat_bart_attention import EATBartAttention
+from eat_bart.modeling.eat_attention import EATAttentionConfig
 from eat_bart.modeling.eat_bart_model import (
     build_eat_bart_model_from_config,
     _validate_checkpoint_load_result,
@@ -60,6 +62,40 @@ def test_patch_bart_self_attention_can_leave_decoder_self_attention_unchanged() 
     assert isinstance(model.model.encoder.layers[0].self_attn, EATBartAttention)
     assert isinstance(model.model.decoder.layers[0].self_attn, BartAttention)
     assert not isinstance(model.model.decoder.layers[0].self_attn, EATBartAttention)
+
+
+def test_probability_mix_alpha_zero_matches_unpatched_bart_logits_and_loss() -> None:
+    torch.manual_seed(11)
+    config = BartConfig(
+        d_model=16, encoder_layers=1, decoder_layers=1,
+        encoder_attention_heads=2, decoder_attention_heads=2,
+        encoder_ffn_dim=32, decoder_ffn_dim=32, vocab_size=99,
+        pad_token_id=1, bos_token_id=0, eos_token_id=2,
+        decoder_start_token_id=2, dropout=0.0, attention_dropout=0.0,
+        encoder_layerdrop=0.0, decoder_layerdrop=0.0,
+    )
+    config._attn_implementation = "eager"
+    baseline = BartForConditionalGeneration(config).eval()
+    eat_model = copy.deepcopy(baseline)
+    patch_bart_self_attention(
+        eat_model,
+        EATAttentionConfig(2, 768, 8, 0.0, "probability_mix"),
+        modify_encoder_self_attention=True,
+        modify_decoder_self_attention=False,
+    )
+    eat_model.eval()
+    input_ids = torch.tensor([[0, 5, 6, 7, 2], [0, 8, 9, 2, 1]])
+    attention_mask = input_ids.ne(1).long()
+    labels = torch.tensor([[10, 11, 2], [12, 13, 2]])
+    emotion = torch.randn(2, 5, 768)
+    with torch.no_grad():
+        expected = baseline(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+        actual = eat_model(
+            input_ids=input_ids, attention_mask=attention_mask, labels=labels,
+            aligned_emotion_hidden_states=emotion,
+        )
+    assert torch.allclose(actual.logits, expected.logits, atol=1e-6, rtol=1e-6)
+    assert torch.allclose(actual.loss, expected.loss, atol=1e-7, rtol=1e-7)
 
 
 def test_patched_bart_forward_accepts_encoder_and_decoder_emotion_features() -> None:

@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import torch
 
-from eat_bart.data.contextual_emotion import align_hidden_states, build_offset_alignment
+from eat_bart.data.contextual_emotion import (
+    align_hidden_states,
+    build_offset_alignment,
+    canonicalize_texts_for_baseline,
+    contextual_cache_fingerprint,
+)
+from eat_bart.data.emotion_features import split_text_for_emotion
+from eat_bart.data.tokenizer import load_bart_tokenizer
 from eat_bart.modeling.eat_attention import EATAttentionConfig
 from eat_bart.modeling.eat_bart_attention import EATBartAttention, eat_eager_attention_forward
 
@@ -28,6 +35,33 @@ def test_offset_alignment_mean_pools_overlapping_subtokens() -> None:
     hidden = torch.tensor([[[0.0], [2.0], [4.0], [0.0]]])
     assert align_hidden_states(hidden, alignment)[0, 1, 0].item() == 3.0
     assert diagnostics.coverage == 1.0
+
+
+def test_canonical_contextual_source_preserves_baseline_bart_input_ids() -> None:
+    tokenizer = load_bart_tokenizer("facebook/bart-base", local_files_only=True)
+    texts = [
+        "What is a panic attack?",
+        "I can't sleep—I'm OVERWHELMED!",
+        "Post-traumatic stress, anxiety, and loneliness.",
+    ]
+    baseline = tokenizer(
+        [split_text_for_emotion(text) for text in texts],
+        is_split_into_words=True,
+        truncation=True,
+        max_length=256,
+    )
+    contextual = tokenizer(
+        canonicalize_texts_for_baseline(texts), truncation=True, max_length=256
+    )
+    assert contextual["input_ids"] == baseline["input_ids"]
+    assert contextual["attention_mask"] == baseline["attention_mask"]
+
+
+def test_cache_v2_fingerprint_differs_from_previous_raw_text_scheme() -> None:
+    fingerprint = contextual_cache_fingerprint(["Question"], "model", 256, True)
+    assert fingerprint != ""
+    # Changing only case changes the source key and cannot silently reuse features.
+    assert fingerprint != contextual_cache_fingerprint(["question"], "model", 256, True)
 
 
 def _probability_mix(alpha: float):

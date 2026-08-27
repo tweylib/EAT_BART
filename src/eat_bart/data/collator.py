@@ -10,7 +10,10 @@ from transformers.models.bart.modeling_bart import shift_tokens_right
 
 from eat_bart.data.emotion_features import SubwordStrategy, tokenize_texts_with_emotion_features
 from eat_bart.data.emotion_lexicon import LexiconEntry
-from eat_bart.data.contextual_emotion import tokenize_and_align_contextual_emotion
+from eat_bart.data.contextual_emotion import (
+    canonicalize_texts_for_baseline,
+    tokenize_and_align_contextual_emotion,
+)
 
 
 @dataclass
@@ -41,8 +44,9 @@ class EATBartDataCollator:
         contextual_batch: dict[str, torch.Tensor] = {}
         if self.emotion_feature_source == "goemotions_contextual":
             if self.contextual_emotion_cache is not None:
+                canonical_questions = canonicalize_texts_for_baseline(questions)
                 source_encoded = self.tokenizer(
-                    questions, max_length=self.max_source_length, padding=True,
+                    canonical_questions, max_length=self.max_source_length, padding=True,
                     truncation=True, return_tensors="pt",
                 )
                 seq_len = source_encoded["input_ids"].size(1)
