@@ -90,6 +90,28 @@ class EATBartAttention(BartAttention):
         if is_cross_attention:
             raise ValueError("EATBartAttention must not be used for BART cross-attention.")
 
+        if emotion_features is None:
+            emotion_features = decoder_emotion_features if self.is_decoder else encoder_emotion_features
+
+        if emotion_features is None:
+            emotion_features = getattr(self, "_eat_emotion_features", None)
+
+        # Preserve BART's configured attention backend exactly when EAT is absent
+        # or the fixed probability-mixture coefficient disables it. In particular,
+        # alpha=0 must recover native BART rather than an eager reimplementation of
+        # an SDPA-backed checkpoint.
+        if emotion_features is None or (
+            self.emotion_interaction.config.formula == "probability_mix"
+            and self.emotion_interaction.config.alpha_init == 0.0
+        ):
+            return super().forward(
+                hidden_states=hidden_states,
+                key_value_states=key_value_states,
+                past_key_values=past_key_values,
+                attention_mask=attention_mask,
+                **kwargs,
+            )
+
         input_shape = hidden_states.shape[:-1]
         hidden_shape = (*input_shape, -1, self.head_dim)
 
@@ -125,15 +147,8 @@ class EATBartAttention(BartAttention):
                 )
 
         emotion_scores = None
-        if emotion_features is None:
-            emotion_features = decoder_emotion_features if self.is_decoder else encoder_emotion_features
-
-        if emotion_features is None:
-            emotion_features = getattr(self, "_eat_emotion_features", None)
-
-        if emotion_features is not None:
-            # emotion_scores shape: [batch_size, num_heads, tgt_len, src_len]
-            emotion_scores = self.emotion_interaction(emotion_features)
+        # emotion_scores shape: [batch_size, num_heads, tgt_len, src_len]
+        emotion_scores = self.emotion_interaction(emotion_features)
 
         attn_output, attn_weights = eat_eager_attention_forward(
             module=self,

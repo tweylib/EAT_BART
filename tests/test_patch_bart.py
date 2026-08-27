@@ -74,7 +74,7 @@ def test_probability_mix_alpha_zero_matches_unpatched_bart_logits_and_loss() -> 
         decoder_start_token_id=2, dropout=0.0, attention_dropout=0.0,
         encoder_layerdrop=0.0, decoder_layerdrop=0.0,
     )
-    config._attn_implementation = "eager"
+    config._attn_implementation = "sdpa"
     baseline = BartForConditionalGeneration(config).eval()
     eat_model = copy.deepcopy(baseline)
     patch_bart_self_attention(
