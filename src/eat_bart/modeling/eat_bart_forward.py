@@ -33,6 +33,11 @@ def enable_eat_forwarding(model: object) -> object:
 class EATBartForConditionalGeneration(BartForConditionalGeneration):
     """BART LM entry point that makes batch emotion features available to EAT attention."""
 
+    # This wrapper accepts feature-routing kwargs, but it does not implement
+    # Transformers' num_items_in_batch loss contract. Declaring this explicitly
+    # keeps Trainer's gradient-accumulation normalization correct.
+    accepts_loss_kwargs = False
+
     def forward(
         self,
         input_ids: torch.LongTensor | None = None,

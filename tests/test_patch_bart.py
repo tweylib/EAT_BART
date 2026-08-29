@@ -98,6 +98,23 @@ def test_probability_mix_alpha_zero_matches_unpatched_bart_logits_and_loss() -> 
     assert torch.allclose(actual.loss, expected.loss, atol=1e-7, rtol=1e-7)
 
 
+def test_eat_wrapper_declares_that_it_does_not_handle_loss_kwargs() -> None:
+    config = BartConfig(
+        d_model=16,
+        encoder_layers=1,
+        decoder_layers=1,
+        encoder_attention_heads=2,
+        decoder_attention_heads=2,
+        encoder_ffn_dim=32,
+        decoder_ffn_dim=32,
+        vocab_size=99,
+    )
+    model = BartForConditionalGeneration(config)
+    patch_bart_self_attention(model, modify_decoder_self_attention=False)
+
+    assert model.accepts_loss_kwargs is False
+
+
 def test_patched_bart_forward_accepts_encoder_and_decoder_emotion_features() -> None:
     config = BartConfig(
         d_model=16,
