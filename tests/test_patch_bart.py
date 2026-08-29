@@ -237,6 +237,53 @@ def test_encoder_emotion_features_support_padded_batches() -> None:
     assert torch.isfinite(alpha.grad).all()
 
 
+def test_frozen_bart_backpropagates_to_probability_mix_weights() -> None:
+    """The real EAT-only setup must leave W1/W2 connected to the LM loss."""
+    config = BartConfig(
+        d_model=16,
+        encoder_layers=1,
+        decoder_layers=1,
+        encoder_attention_heads=2,
+        decoder_attention_heads=2,
+        encoder_ffn_dim=32,
+        decoder_ffn_dim=32,
+        vocab_size=99,
+        pad_token_id=1,
+        bos_token_id=0,
+        eos_token_id=2,
+        decoder_start_token_id=2,
+        dropout=0.0,
+        attention_dropout=0.0,
+    )
+    model = BartForConditionalGeneration(config)
+    patch_bart_self_attention(
+        model,
+        EATAttentionConfig(2, 768, 8, 0.1, "probability_mix"),
+        modify_decoder_self_attention=False,
+    )
+    model.requires_grad_(False)
+    interaction = model.model.encoder.layers[0].self_attn.emotion_interaction
+    interaction.w1_s.requires_grad_(True)
+    interaction.w2_s.requires_grad_(True)
+
+    input_ids = torch.tensor([[0, 5, 6, 7, 2], [0, 8, 9, 2, 1]])
+    attention_mask = input_ids.ne(1).long()
+    labels = torch.tensor([[10, 11, 2], [12, 13, 2]])
+    emotion = torch.randn(2, 5, 768)
+    loss = model(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        labels=labels,
+        aligned_emotion_hidden_states=emotion,
+    ).loss
+    loss.backward()
+
+    assert interaction.w1_s.grad is not None
+    assert interaction.w1_s.grad.norm() > 0
+    assert interaction.w2_s.grad is not None
+    assert interaction.w2_s.grad.norm() > 0
+
+
 def test_patched_bart_generate_accepts_precomputed_emotion_encoder_outputs() -> None:
     config = BartConfig(
         d_model=16,

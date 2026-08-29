@@ -225,12 +225,17 @@ def eat_eager_attention_forward(
 
 
 def _attention_mask_to_bool(attention_mask: torch.Tensor) -> torch.Tensor:
-    """Convert BART attention masks to boolean masks for masked_fill.
+    """Return ``True`` exactly where attention must be masked out.
 
     attention_mask shape: [batch_size, 1, tgt_len, src_len]
     return shape: [batch_size, 1, tgt_len, src_len]
+
+    Transformers 5 passes SDPA-style boolean masks to BART attention, where
+    ``True`` means that a key is allowed.  Additive eager masks instead use a
+    negative value for a disallowed key.  ``masked_fill`` has the opposite
+    boolean convention, so boolean masks must be inverted here.
     """
     if attention_mask.dtype == torch.bool:
-        return attention_mask
+        return ~attention_mask
 
     return attention_mask < 0

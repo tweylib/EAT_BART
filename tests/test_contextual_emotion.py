@@ -114,6 +114,32 @@ def test_contextual_pairwise_weights_receive_gradients_without_projection() -> N
     assert module.emotion_interaction.w2_s.grad.norm() > 0
 
 
+def test_probability_mix_boolean_mask_keeps_valid_keys_trainable() -> None:
+    """Transformers 5 boolean masks use True for positions that may attend."""
+    torch.manual_seed(13)
+    module = EATBartAttention(
+        embed_dim=8, num_heads=2, dropout=0.0,
+        eat_config=EATAttentionConfig(2, 768, 16, 0.1, "probability_mix"),
+    )
+    hidden_states = torch.randn(2, 5, 8)
+    contextual = torch.randn(2, 5, 768)
+    allowed = torch.ones(2, 1, 5, 5, dtype=torch.bool)
+    allowed[1, :, :, -1] = False
+
+    output, probabilities = module(
+        hidden_states,
+        attention_mask=allowed,
+        emotion_features=contextual,
+    )
+    output.square().mean().backward()
+
+    assert torch.count_nonzero(probabilities[1, :, :, -1]) == 0
+    assert module.emotion_interaction.w1_s.grad is not None
+    assert module.emotion_interaction.w1_s.grad.norm() > 0
+    assert module.emotion_interaction.w2_s.grad is not None
+    assert module.emotion_interaction.w2_s.grad.norm() > 0
+
+
 import pytest
 
 
