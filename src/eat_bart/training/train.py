@@ -17,6 +17,7 @@ from transformers import (
 from eat_bart.data.collator import BartDataCollator
 from eat_bart.data.dataset import MentalHealthResponseDataset, split_dataset
 from eat_bart.data.tokenizer import load_bart_tokenizer
+from eat_bart.training.comparability import validate_runtime, write_run_manifest
 from eat_bart.utils.config import load_yaml_config
 from eat_bart.utils.seed import set_seed
 
@@ -27,6 +28,13 @@ def train(config_path: str | Path = "configs/default.yaml") -> None:
     """Fine-tune an unmodified BART model."""
     config = load_yaml_config(config_path)
     trainer = build_trainer(config)
+    manifest_path = write_run_manifest(
+        config=config,
+        dataset_path=config["data"]["dataset_path"],
+        output_dir=trainer.args.output_dir,
+        stage="baseline",
+    )
+    print(f"Run manifest: {manifest_path}")
     trainer.train()
     _write_epoch_loss_report(trainer)
     if bool(config["training"].get("save_model", True)):
@@ -35,6 +43,7 @@ def train(config_path: str | Path = "configs/default.yaml") -> None:
 
 def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
     """Build a Hugging Face trainer from project config."""
+    validate_runtime(config)
     model_config = config["model"]
     data_config = config["data"]
     training_config = config["training"]
@@ -67,6 +76,10 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
         model_name,
         local_files_only=local_files_only,
     )
+    # Transformers 5 otherwise infers loss-kwargs support from BART's **kwargs
+    # signature, although BART does not implement num_items_in_batch.  That
+    # incorrectly scales gradient accumulation and the reported training loss.
+    configure_baseline_loss_contract(model)
 
     collator = BartDataCollator(
         tokenizer=tokenizer,
@@ -113,6 +126,7 @@ def build_training_arguments(training_config: dict[str, Any]) -> Seq2SeqTraining
         eval_strategy=training_config.get("eval_strategy", "epoch"),
         save_strategy=training_config.get("save_strategy", "epoch"),
         logging_strategy=training_config.get("logging_strategy", "epoch"),
+        logging_steps=int(training_config.get("logging_steps", 50)),
         save_total_limit=int(training_config.get("save_total_limit", 2)),
         load_best_model_at_end=bool(training_config.get("load_best_model_at_end", True)),
         metric_for_best_model=training_config.get("metric_for_best_model", "eval_loss"),
@@ -126,6 +140,11 @@ def build_training_arguments(training_config: dict[str, Any]) -> Seq2SeqTraining
             training_config.get("dataloader_pin_memory", torch.cuda.is_available())
         ),
     )
+
+
+def configure_baseline_loss_contract(model: torch.nn.Module) -> None:
+    """Tell Transformers Trainer that stock BART ignores loss kwargs."""
+    model.accepts_loss_kwargs = False
 
 
 def _write_epoch_loss_report(trainer: Seq2SeqTrainer) -> Path:

@@ -4,7 +4,11 @@ from types import SimpleNamespace
 from transformers import BartConfig, BartForConditionalGeneration
 from transformers.models.bart.modeling_bart import BartAttention
 
-from eat_bart.training.train import _write_epoch_loss_report, build_training_arguments
+from eat_bart.training.train import (
+    _write_epoch_loss_report,
+    build_training_arguments,
+    configure_baseline_loss_contract,
+)
 
 
 def test_baseline_uses_stock_bart_attention_everywhere() -> None:
@@ -27,6 +31,24 @@ def test_baseline_uses_stock_bart_attention_everywhere() -> None:
     assert type(decoder_layer.self_attn) is BartAttention
     assert type(decoder_layer.encoder_attn) is BartAttention
     assert not any("emotion" in name.lower() for name, _ in model.named_parameters())
+
+
+def test_baseline_declares_that_it_does_not_handle_loss_kwargs() -> None:
+    config = BartConfig(
+        vocab_size=64,
+        d_model=16,
+        encoder_layers=1,
+        decoder_layers=1,
+        encoder_attention_heads=2,
+        decoder_attention_heads=2,
+        encoder_ffn_dim=32,
+        decoder_ffn_dim=32,
+    )
+    model = BartForConditionalGeneration(config)
+
+    configure_baseline_loss_contract(model)
+
+    assert model.accepts_loss_kwargs is False
 
 
 def test_training_arguments_select_best_eval_loss_and_log_each_epoch(tmp_path) -> None:

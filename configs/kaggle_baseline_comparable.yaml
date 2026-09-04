@@ -1,0 +1,27 @@
+inherits: configs/kaggle.yaml
+
+comparison:
+  protocol_id: bart_eat_comparable_v1
+  expected_cuda_devices: 2
+
+training:
+  output_dir: /kaggle/working/models/bart_baseline_comparable
+  num_train_epochs: 30
+  learning_rate: 0.00003
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 4
+  fp16: true
+  eval_strategy: epoch
+  save_strategy: epoch
+  logging_strategy: steps
+  logging_steps: 50
+  save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
+  early_stopping_patience: 3
+
+data:
+  max_source_length: 256
+  max_target_length: 512

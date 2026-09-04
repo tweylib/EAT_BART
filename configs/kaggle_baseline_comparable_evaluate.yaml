@@ -1,0 +1,15 @@
+inherits: configs/kaggle_baseline_comparable.yaml
+
+evaluation:
+  model_source: checkpoint
+  checkpoint_path: /kaggle/working/models/bart_baseline_comparable
+  output_path: /kaggle/working/reports/bart_baseline_comparable_generations.csv
+  max_eval_examples:
+  batch_size: 4
+  max_new_tokens: 512
+  num_beams: 4
+  do_sample: false
+  repetition_penalty: 1.15
+  no_repeat_ngram_size: 3
+  length_penalty: 1.15
+  early_stopping: true

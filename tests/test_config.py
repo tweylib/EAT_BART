@@ -54,3 +54,27 @@ def test_both_kaggle_judges_use_the_full_test_generation_set() -> None:
 
     assert llama_config["llm_judge"]["max_examples"] is None
     assert gpt_oss_config["llm_judge"]["max_examples"] is None
+
+
+def test_comparable_baseline_protocol_is_explicit() -> None:
+    training_config = load_yaml_config("configs/kaggle_baseline_comparable.yaml")
+    evaluation_config = load_yaml_config("configs/kaggle_baseline_comparable_evaluate.yaml")
+    judge_config = load_yaml_config("configs/kaggle_baseline_comparable_judge_gpt_oss.yaml")
+
+    assert training_config["comparison"]["protocol_id"] == "bart_eat_comparable_v1"
+    assert training_config["comparison"]["expected_cuda_devices"] == 2
+    assert training_config["model"]["add_prefix_space"] is False
+    assert training_config["data"]["max_source_length"] == 256
+    assert training_config["data"]["max_target_length"] == 512
+    assert training_config["training"]["num_train_epochs"] == 30
+    assert training_config["training"]["per_device_train_batch_size"] == 4
+    assert training_config["training"]["per_device_eval_batch_size"] == 4
+    assert training_config["training"]["gradient_accumulation_steps"] == 4
+    assert training_config["training"]["early_stopping_patience"] == 3
+    assert evaluation_config["evaluation"]["max_new_tokens"] == 512
+    assert evaluation_config["evaluation"]["num_beams"] == 4
+    assert evaluation_config["evaluation"]["repetition_penalty"] == 1.15
+    assert evaluation_config["evaluation"]["no_repeat_ngram_size"] == 3
+    assert evaluation_config["evaluation"]["length_penalty"] == 1.15
+    assert judge_config["llm_judge"]["model"] == "openai/gpt-oss-120b"
+    assert judge_config["llm_judge"]["max_examples"] == 100

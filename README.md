@@ -14,12 +14,12 @@ The baseline keeps the experimental protocol inherited from the encoder-EAT
 comparison branch:
 
 - the same dataset columns and deterministic train/validation/test split;
-- the same seed, sequence lengths, optimizer settings, batch sizes, gradient
-  accumulation, epoch count, and generation parameters;
-- the same automatic metrics and two-judge aggregation protocol.
+- the same seed, sequence lengths, microbatch size, gradient accumulation, and
+  generation parameters;
+- the same automatic metrics and GPT-OSS judging protocol.
 
-The architecture is the intended independent variable: standard BART versus
-emotion-aware BART.
+The epoch ceilings, learning rates, and trainable parameter sets intentionally
+differ between baseline fitting and the subsequent frozen-BART EAT stage.
 
 ## Project Shape
 
@@ -35,30 +35,30 @@ can import the worktrees consistently; it does not imply EAT is enabled here.
 
 ## Kaggle Protocol
 
-Train the baseline for at most 30 epochs. Training stops after two consecutive
+Train the baseline for at most 30 epochs. Training stops after three consecutive
 epochs without an improvement in validation loss, and the trainer reloads the
 checkpoint with the lowest validation loss before saving the final model:
 
 ```bash
-python scripts/train.py --config configs/kaggle_baseline_5epoch.yaml
+python scripts/train.py --config configs/kaggle_baseline_comparable.yaml
 ```
 
 Evaluate the full test split and score automatic metrics:
 
 ```bash
-python scripts/evaluate.py --config configs/kaggle_baseline_5epoch_experiment_evaluate.yaml
-python scripts/score_generations.py --config configs/kaggle_baseline_5epoch_experiment_score.yaml
+python scripts/evaluate.py --config configs/kaggle_baseline_comparable_evaluate.yaml
+python scripts/score_generations.py --config configs/kaggle_baseline_comparable_score.yaml
 ```
 
-Run both Groq judges and aggregate completion-weighted scores:
+Run the same GPT-OSS judge used for EAT on the first 100 test examples:
 
 ```bash
-python scripts/judge_generations.py --config configs/kaggle_baseline_5epoch_experiment_judge_groq.yaml
-python scripts/judge_generations.py --config configs/kaggle_baseline_5epoch_experiment_judge_groq_gpt_oss.yaml
-python scripts/aggregate_judges.py --config configs/kaggle_baseline_5epoch_experiment_judge_groq_2judge_aggregate.yaml
+python scripts/judge_generations.py --config configs/kaggle_baseline_comparable_judge_gpt_oss.yaml
 ```
 
-Both judges process the complete generated test set.
+The training output includes `run_manifest.json`. Upload the complete
+`/kaggle/working/models/bart_baseline_comparable` directory as a Kaggle input;
+the EAT stage will refuse to train if its protocol or dataset does not match.
 
 Targets and generated responses are capped at 512 BART tokens. Automatic BLEU
 is computed with SacreBLEU and reported on its standard 0-100 scale.
