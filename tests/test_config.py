@@ -99,3 +99,31 @@ def test_contextual_eat_uses_standard_baseline_tokenization_contract() -> None:
     assert training_config["data"]["max_target_length"] == 512
     assert "raw_aligned" in training_config["data"]["contextual_emotion_cache"]["path"]
     assert evaluation_config["evaluation"]["max_new_tokens"] == 512
+
+
+def test_comparable_eat_protocol_is_explicit_and_self_checking() -> None:
+    training_config = load_yaml_config("configs/kaggle_encoder_eat_comparable.yaml")
+    evaluation_config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_evaluate.yaml"
+    )
+    judge_config = load_yaml_config("configs/kaggle_encoder_eat_comparable_judge_gpt_oss.yaml")
+
+    assert training_config["comparison"]["protocol_id"] == "bart_eat_comparable_v1"
+    assert training_config["comparison"]["expected_cuda_devices"] == 2
+    assert training_config["comparison"]["require_baseline_manifest"] is True
+    assert training_config["model"]["baseline_checkpoint_path"] == "auto"
+    assert training_config["model"]["baseline_artifact_name"] == "bart_baseline_comparable"
+    assert training_config["model"]["add_prefix_space"] is False
+    assert training_config["data"]["max_source_length"] == 256
+    assert training_config["data"]["max_target_length"] == 512
+    assert training_config["training"]["per_device_train_batch_size"] == 4
+    assert training_config["training"]["per_device_eval_batch_size"] == 4
+    assert training_config["training"]["gradient_accumulation_steps"] == 4
+    assert training_config["training"]["early_stopping_patience"] == 3
+    assert evaluation_config["evaluation"]["max_new_tokens"] == 512
+    assert evaluation_config["evaluation"]["num_beams"] == 4
+    assert evaluation_config["evaluation"]["repetition_penalty"] == 1.15
+    assert evaluation_config["evaluation"]["no_repeat_ngram_size"] == 3
+    assert evaluation_config["evaluation"]["length_penalty"] == 1.15
+    assert judge_config["llm_judge"]["model"] == "openai/gpt-oss-120b"
+    assert judge_config["llm_judge"]["max_examples"] == 100

@@ -21,6 +21,12 @@ from eat_bart.modeling.eat_bart_model import (
     load_eat_bart_model,
 )
 from eat_bart.training.eat_signal import calculate_encoder_eat_signal, write_eat_signal_csv
+from eat_bart.training.comparability import (
+    resolve_baseline_checkpoint,
+    validate_baseline_manifest,
+    validate_runtime,
+    write_run_manifest,
+)
 from eat_bart.training.optimizer import DifferentialLearningRateTrainer
 from eat_bart.utils.config import load_yaml_config
 from eat_bart.utils.seed import set_seed
@@ -30,6 +36,13 @@ def train(config_path: str | Path = "configs/default.yaml") -> None:
     """Train EAT-BART."""
     config = load_yaml_config(config_path)
     trainer = build_trainer(config)
+    manifest_path = write_run_manifest(
+        config=config,
+        dataset_path=config["data"]["dataset_path"],
+        output_dir=trainer.args.output_dir,
+        stage="encoder_eat",
+    )
+    print(f"Run manifest: {manifest_path}")
     trainer.train()
     if bool(config["training"].get("save_model", True)):
         trainer.save_model()
@@ -38,6 +51,7 @@ def train(config_path: str | Path = "configs/default.yaml") -> None:
 
 def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
     """Build a Hugging Face trainer from project config."""
+    validate_runtime(config)
     model_config = config["model"]
     data_config = config["data"]
     training_config = config["training"]
@@ -63,6 +77,20 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
     model_name = model_config.get("name", DEFAULT_MODEL_NAME)
     local_files_only = bool(model_config.get("local_files_only", False))
     baseline_checkpoint_path = model_config.get("baseline_checkpoint_path")
+    if baseline_checkpoint_path:
+        baseline_checkpoint_path = resolve_baseline_checkpoint(
+            baseline_checkpoint_path,
+            artifact_name=model_config.get(
+                "baseline_artifact_name", "bart_baseline_comparable"
+            ),
+        )
+        model_config["baseline_checkpoint_path"] = str(baseline_checkpoint_path)
+        if bool(config.get("comparison", {}).get("require_baseline_manifest", False)):
+            validate_baseline_manifest(
+                baseline_checkpoint_path,
+                eat_config=config,
+                dataset_path=dataset_path,
+            )
     tokenizer_source = baseline_checkpoint_path or model_name
     tokenizer = load_bart_tokenizer(
         tokenizer_source,

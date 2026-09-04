@@ -1,0 +1,39 @@
+inherits: configs/encoder_eat_goemotions_probmix_a010.yaml
+
+comparison:
+  protocol_id: bart_eat_comparable_v1
+  expected_cuda_devices: 2
+  require_baseline_manifest: true
+
+model:
+  baseline_checkpoint_path: auto
+  baseline_artifact_name: bart_baseline_comparable
+
+training:
+  output_dir: /kaggle/working/models/encoder_eat_comparable
+  max_steps: -1
+  num_train_epochs: 40
+  save_model: true
+  learning_rate: 0.0003
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 4
+  dataloader_num_workers: 2
+  dataloader_pin_memory: true
+  eval_strategy: epoch
+  save_strategy: epoch
+  save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
+  early_stopping_patience: 3
+  early_stopping_threshold: 0.0
+
+data:
+  max_source_length: 256
+  max_target_length: 512
+
+eat_signal:
+  enabled: true
+  output_path: /kaggle/working/reports/encoder_eat_comparable_r_h.csv
+  max_batches: 50

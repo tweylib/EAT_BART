@@ -66,7 +66,7 @@ def run_generation(config: dict[str, Any]) -> Path:
     model_name = model_config.get("name", DEFAULT_MODEL_NAME)
     local_files_only = bool(model_config.get("local_files_only", False))
     tokenizer = load_bart_tokenizer(
-        model_config.get("baseline_checkpoint_path", model_name),
+        checkpoint_path if model_source == "eat_checkpoint" else model_name,
         local_files_only=local_files_only,
         add_prefix_space=bool(model_config.get("add_prefix_space", True)),
     )

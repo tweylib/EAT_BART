@@ -18,6 +18,24 @@ cross-attention remain standard BART.
 
 ## Current Kaggle Protocol
 
+For the controlled baseline-to-EAT comparison, first upload the complete
+`bart_baseline_comparable` directory produced by the baseline branch as a Kaggle
+input. The EAT preflight discovers exactly one directory with that name and
+verifies its `run_manifest.json` before training.
+
+```bash
+python scripts/check_comparability.py --config configs/kaggle_encoder_eat_comparable.yaml
+python scripts/train.py --config configs/kaggle_encoder_eat_comparable.yaml
+python scripts/evaluate.py --config configs/kaggle_encoder_eat_comparable_evaluate.yaml
+python scripts/score_generations.py --config configs/kaggle_encoder_eat_comparable_score.yaml
+python scripts/judge_generations.py --config configs/kaggle_encoder_eat_comparable_judge_gpt_oss.yaml
+```
+
+The manifest check covers the dataset hash, split, tokenizer behavior, source
+and target lengths, seed, precision, and batch/accumulation settings. The
+baseline and EAT stages use the same effective global batch; only their epoch
+ceilings, learning rates, and trainable parameters intentionally differ.
+
 Train the cleaned 5-epoch encoder-EAT model:
 
 ```bash
