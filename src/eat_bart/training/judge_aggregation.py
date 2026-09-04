@@ -14,6 +14,7 @@ def aggregate_judge_summaries(
     output_path: str | Path,
     min_completion_rate: float = 0.0,
     min_judged_examples: int = 1,
+    require_all_judges: bool = False,
 ) -> dict[str, float | str]:
     """Average judge summary metrics across completed judge runs."""
     rows = []
@@ -26,6 +27,11 @@ def aggregate_judge_summaries(
         min_completion_rate=min_completion_rate,
         min_judged_examples=min_judged_examples,
     )
+    if require_all_judges and aggregate["num_eligible_judges"] != float(len(judges)):
+        raise ValueError(
+            "Not all configured judges met the completion requirements: "
+            f"eligible={int(aggregate['num_eligible_judges'])}, configured={len(judges)}."
+        )
     _write_aggregate(output_path, aggregate)
     return aggregate
 

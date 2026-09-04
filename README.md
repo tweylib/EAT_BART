@@ -50,10 +50,12 @@ python scripts/evaluate.py --config configs/kaggle_baseline_comparable_evaluate.
 python scripts/score_generations.py --config configs/kaggle_baseline_comparable_score.yaml
 ```
 
-Run the same GPT-OSS judge used for EAT on the first 100 test examples:
+Run the same GPT-OSS and Qwen judges used for EAT on the first 100 test examples:
 
 ```bash
 python scripts/judge_generations.py --config configs/kaggle_baseline_comparable_judge_gpt_oss.yaml
+python scripts/judge_generations.py --config configs/kaggle_baseline_comparable_judge_qwen.yaml
+python scripts/aggregate_judges.py --config configs/kaggle_baseline_comparable_judge_aggregate.yaml
 ```
 
 The training output includes `run_manifest.json`. Upload the complete

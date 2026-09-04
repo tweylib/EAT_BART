@@ -1,0 +1,10 @@
+judge_aggregation:
+  output_path: /kaggle/working/reports/bart_baseline_comparable_judge_aggregate.csv
+  min_completion_rate: 0.95
+  min_judged_examples: 95
+  require_all_judges: true
+  judges:
+    - name: openai/gpt-oss-120b
+      summary_path: /kaggle/working/reports/bart_baseline_comparable_judge_gpt_oss_summary.csv
+    - name: qwen/qwen3.6-27b
+      summary_path: /kaggle/working/reports/bart_baseline_comparable_judge_qwen_summary.csv
