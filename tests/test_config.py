@@ -107,6 +107,10 @@ def test_comparable_eat_protocol_is_explicit_and_self_checking() -> None:
         "configs/kaggle_encoder_eat_comparable_evaluate.yaml"
     )
     judge_config = load_yaml_config("configs/kaggle_encoder_eat_comparable_judge_gpt_oss.yaml")
+    qwen_config = load_yaml_config("configs/kaggle_encoder_eat_comparable_judge_qwen.yaml")
+    aggregate_config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_judge_aggregate.yaml"
+    )
 
     assert training_config["comparison"]["protocol_id"] == "bart_eat_comparable_v1"
     assert training_config["comparison"]["expected_cuda_devices"] == 2
@@ -127,3 +131,7 @@ def test_comparable_eat_protocol_is_explicit_and_self_checking() -> None:
     assert evaluation_config["evaluation"]["length_penalty"] == 1.15
     assert judge_config["llm_judge"]["model"] == "openai/gpt-oss-120b"
     assert judge_config["llm_judge"]["max_examples"] == 100
+    assert qwen_config["llm_judge"]["model"] == "qwen/qwen3.6-27b"
+    assert qwen_config["llm_judge"]["max_examples"] == 100
+    assert aggregate_config["judge_aggregation"]["require_all_judges"] is True
+    assert aggregate_config["judge_aggregation"]["min_judged_examples"] == 95

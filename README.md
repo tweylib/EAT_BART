@@ -29,6 +29,8 @@ python scripts/train.py --config configs/kaggle_encoder_eat_comparable.yaml
 python scripts/evaluate.py --config configs/kaggle_encoder_eat_comparable_evaluate.yaml
 python scripts/score_generations.py --config configs/kaggle_encoder_eat_comparable_score.yaml
 python scripts/judge_generations.py --config configs/kaggle_encoder_eat_comparable_judge_gpt_oss.yaml
+python scripts/judge_generations.py --config configs/kaggle_encoder_eat_comparable_judge_qwen.yaml
+python scripts/aggregate_judges.py --config configs/kaggle_encoder_eat_comparable_judge_aggregate.yaml
 ```
 
 The manifest check covers the dataset hash, split, tokenizer behavior, source

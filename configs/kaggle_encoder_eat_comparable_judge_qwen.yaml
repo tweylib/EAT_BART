@@ -1,0 +1,6 @@
+inherits: configs/kaggle_encoder_eat_comparable_judge_gpt_oss.yaml
+
+llm_judge:
+  output_path: /kaggle/working/reports/encoder_eat_comparable_judge_qwen.csv
+  summary_output_path: /kaggle/working/reports/encoder_eat_comparable_judge_qwen_summary.csv
+  model: qwen/qwen3.6-27b
