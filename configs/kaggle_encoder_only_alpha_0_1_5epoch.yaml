@@ -1,0 +1,7 @@
+inherits: configs/kaggle_encoder_only_5epoch.yaml
+
+model:
+  alpha_init: 0.1
+
+training:
+  output_dir: /kaggle/working/models/eat_bart_encoder_only_alpha_0_1_5epoch

@@ -18,6 +18,37 @@ cross-attention remain standard BART.
 
 ## Current Kaggle Protocol
 
+For the controlled baseline-to-EAT comparison, the EAT configuration loads the
+complete baseline checkpoint from
+`/kaggle/input/datasets/cheikhtidjanitweylib/baseline-30-eps-new-model/models/bart_baseline_comparable`.
+The EAT preflight verifies its `run_manifest.json` before training.
+
+```bash
+python scripts/check_comparability.py --config configs/kaggle_encoder_eat_comparable.yaml
+python scripts/train.py --config configs/kaggle_encoder_eat_comparable.yaml
+python scripts/evaluate.py --config configs/kaggle_encoder_eat_comparable_evaluate.yaml
+python scripts/score_generations.py --config configs/kaggle_encoder_eat_comparable_score.yaml
+python scripts/judge_generations.py --config configs/kaggle_encoder_eat_comparable_judge_gpt_oss.yaml
+python scripts/judge_generations.py --config configs/kaggle_encoder_eat_comparable_judge_qwen.yaml
+python scripts/aggregate_judges.py --config configs/kaggle_encoder_eat_comparable_judge_aggregate.yaml
+```
+
+Evaluate the trained EAT checkpoint with its emotion branch disabled, without
+performing any further training. Evaluation loads the uploaded checkpoint at
+`/kaggle/input/datasets/cheikhmohamedahid/eat-encoder/models/encoder_eat_comparable`
+and the uploaded contextual cache under the same dataset. Run these commands
+from the repository's `EAT_BART` directory:
+
+```bash
+python scripts/evaluate.py --config configs/kaggle_encoder_eat_comparable_alpha0_evaluate.yaml
+python scripts/score_generations.py --config configs/kaggle_encoder_eat_comparable_alpha0_score.yaml
+```
+
+The manifest check covers the dataset hash, split, tokenizer behavior, source
+and target lengths, seed, precision, and batch/accumulation settings. The
+baseline and EAT stages use the same effective global batch; only their epoch
+ceilings, learning rates, and trainable parameters intentionally differ.
+
 Train the cleaned 5-epoch encoder-EAT model:
 
 ```bash

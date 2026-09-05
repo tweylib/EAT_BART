@@ -58,6 +58,26 @@ def load_eat_bart_model(
     )
 
 
+def load_eat_bart_from_baseline_checkpoint(
+    checkpoint_path: str | Path,
+    eat_config: EATAttentionConfig,
+    local_files_only: bool = True,
+) -> BartForConditionalGeneration:
+    """Load a standard fine-tuned BART checkpoint, then add encoder-only EAT weights."""
+    checkpoint_dir = Path(checkpoint_path)
+    if not checkpoint_dir.exists():
+        raise FileNotFoundError(f"Missing baseline BART checkpoint: {checkpoint_dir}")
+    model = BartForConditionalGeneration.from_pretrained(
+        checkpoint_dir, local_files_only=local_files_only
+    )
+    return patch_bart_self_attention(
+        model,
+        eat_config=eat_config,
+        modify_encoder_self_attention=True,
+        modify_decoder_self_attention=False,
+    )
+
+
 def load_eat_bart_checkpoint(
     checkpoint_path: str | Path,
     eat_config: EATAttentionConfig | None = None,
