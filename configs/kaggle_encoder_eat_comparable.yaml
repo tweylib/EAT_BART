@@ -6,7 +6,7 @@ comparison:
   require_baseline_manifest: true
 
 model:
-  baseline_checkpoint_path: auto
+  baseline_checkpoint_path: /kaggle/input/datasets/cheikhtidjanitweylib/baseline-30-eps-new-model/models/bart_baseline_comparable
   baseline_artifact_name: bart_baseline_comparable
 
 training:

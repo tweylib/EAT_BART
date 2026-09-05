@@ -18,10 +18,10 @@ cross-attention remain standard BART.
 
 ## Current Kaggle Protocol
 
-For the controlled baseline-to-EAT comparison, first upload the complete
-`bart_baseline_comparable` directory produced by the baseline branch as a Kaggle
-input. The EAT preflight discovers exactly one directory with that name and
-verifies its `run_manifest.json` before training.
+For the controlled baseline-to-EAT comparison, the EAT configuration loads the
+complete baseline checkpoint from
+`/kaggle/input/datasets/cheikhtidjanitweylib/baseline-30-eps-new-model/models/bart_baseline_comparable`.
+The EAT preflight verifies its `run_manifest.json` before training.
 
 ```bash
 python scripts/check_comparability.py --config configs/kaggle_encoder_eat_comparable.yaml

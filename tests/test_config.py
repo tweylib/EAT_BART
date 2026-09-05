@@ -115,7 +115,10 @@ def test_comparable_eat_protocol_is_explicit_and_self_checking() -> None:
     assert training_config["comparison"]["protocol_id"] == "bart_eat_comparable_v1"
     assert training_config["comparison"]["expected_cuda_devices"] == 2
     assert training_config["comparison"]["require_baseline_manifest"] is True
-    assert training_config["model"]["baseline_checkpoint_path"] == "auto"
+    assert training_config["model"]["baseline_checkpoint_path"] == (
+        "/kaggle/input/datasets/cheikhtidjanitweylib/"
+        "baseline-30-eps-new-model/models/bart_baseline_comparable"
+    )
     assert training_config["model"]["baseline_artifact_name"] == "bart_baseline_comparable"
     assert training_config["model"]["add_prefix_space"] is False
     assert training_config["data"]["max_source_length"] == 256
