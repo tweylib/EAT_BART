@@ -6,5 +6,5 @@ scoring:
   include_bertscore: true
   bertscore_model_type: roberta-large
   bertscore_batch_size: 8
-  validation_loss_path: /kaggle/working/models/encoder_eat_comparable
+  validation_loss_path: /kaggle/input/datasets/cheikhmohamedahid/eat-encoder/models/encoder_eat_comparable
   validation_loss_mode: best

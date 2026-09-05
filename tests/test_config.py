@@ -151,7 +151,8 @@ def test_comparable_alpha_zero_ablation_is_evaluation_only() -> None:
     assert evaluation_config["model"]["alpha"] == 0.0
     assert evaluation_config["evaluation"]["model_source"] == "eat_checkpoint"
     assert evaluation_config["evaluation"]["checkpoint_path"] == (
-        "/kaggle/working/models/encoder_eat_comparable"
+        "/kaggle/input/datasets/cheikhmohamedahid/"
+        "eat-encoder/models/encoder_eat_comparable"
     )
     assert evaluation_config["evaluation"]["do_sample"] is False
     assert scoring_config["scoring"]["validation_loss_path"] is None

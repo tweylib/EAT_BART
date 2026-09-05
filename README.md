@@ -34,7 +34,8 @@ python scripts/aggregate_judges.py --config configs/kaggle_encoder_eat_comparabl
 ```
 
 Evaluate the trained EAT checkpoint with its emotion branch disabled, without
-performing any further training:
+performing any further training. Evaluation loads the uploaded checkpoint at
+`/kaggle/input/datasets/cheikhmohamedahid/eat-encoder/models/encoder_eat_comparable`:
 
 ```bash
 python scripts/evaluate.py --config configs/kaggle_encoder_eat_comparable_alpha0_evaluate.yaml
