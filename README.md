@@ -33,6 +33,14 @@ python scripts/judge_generations.py --config configs/kaggle_encoder_eat_comparab
 python scripts/aggregate_judges.py --config configs/kaggle_encoder_eat_comparable_judge_aggregate.yaml
 ```
 
+Evaluate the trained EAT checkpoint with its emotion branch disabled, without
+performing any further training:
+
+```bash
+python scripts/evaluate.py --config configs/kaggle_encoder_eat_comparable_alpha0_evaluate.yaml
+python scripts/score_generations.py --config configs/kaggle_encoder_eat_comparable_alpha0_score.yaml
+```
+
 The manifest check covers the dataset hash, split, tokenizer behavior, source
 and target lengths, seed, precision, and batch/accumulation settings. The
 baseline and EAT stages use the same effective global batch; only their epoch

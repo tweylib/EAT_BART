@@ -138,3 +138,20 @@ def test_comparable_eat_protocol_is_explicit_and_self_checking() -> None:
     assert qwen_config["llm_judge"]["max_examples"] == 100
     assert aggregate_config["judge_aggregation"]["require_all_judges"] is True
     assert aggregate_config["judge_aggregation"]["min_judged_examples"] == 95
+
+
+def test_comparable_alpha_zero_ablation_is_evaluation_only() -> None:
+    evaluation_config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_alpha0_evaluate.yaml"
+    )
+    scoring_config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_alpha0_score.yaml"
+    )
+
+    assert evaluation_config["model"]["alpha"] == 0.0
+    assert evaluation_config["evaluation"]["model_source"] == "eat_checkpoint"
+    assert evaluation_config["evaluation"]["checkpoint_path"] == (
+        "/kaggle/working/models/encoder_eat_comparable"
+    )
+    assert evaluation_config["evaluation"]["do_sample"] is False
+    assert scoring_config["scoring"]["validation_loss_path"] is None
