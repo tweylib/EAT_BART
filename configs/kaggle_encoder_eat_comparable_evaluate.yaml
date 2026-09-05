@@ -13,3 +13,7 @@ evaluation:
   no_repeat_ngram_size: 3
   length_penalty: 1.15
   early_stopping: true
+
+data:
+  contextual_emotion_cache:
+    path: /kaggle/input/datasets/cheikhmohamedahid/eat-encoder/cache/goemotions_baseline_raw_aligned_fp16_v3.pt

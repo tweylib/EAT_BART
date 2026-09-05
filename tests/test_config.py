@@ -154,5 +154,9 @@ def test_comparable_alpha_zero_ablation_is_evaluation_only() -> None:
         "/kaggle/input/datasets/cheikhmohamedahid/"
         "eat-encoder/models/encoder_eat_comparable"
     )
+    assert evaluation_config["data"]["contextual_emotion_cache"]["path"] == (
+        "/kaggle/input/datasets/cheikhmohamedahid/eat-encoder/cache/"
+        "goemotions_baseline_raw_aligned_fp16_v3.pt"
+    )
     assert evaluation_config["evaluation"]["do_sample"] is False
     assert scoring_config["scoring"]["validation_loss_path"] is None
