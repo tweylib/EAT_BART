@@ -324,6 +324,19 @@ test generation-quality/diversity metric decreased slightly. This run is best
 described as approximately tied with, or slightly worse than, the baseline; it
 does not establish an EAT performance improvement.
 
+Although the configuration allowed up to 40 epochs, early stopping ended the
+alpha=0.10 run after epoch 4 (1,988 of the scheduled 19,880 optimizer steps).
+Epoch 1 produced the best validation loss, and `load_best_model_at_end` restored
+that checkpoint before the final model was saved. The displayed validation
+losses were 0.7768, 0.7769, 0.7768, and 0.7768 for epochs 1-4. Mean logged
+training losses by epoch were approximately 0.8917, 0.8982, 0.8951, and 0.8932,
+while mean gradient norms remained nonzero at approximately 0.0112-0.0119.
+Consequently, the parameters were receiving gradients, but neither training nor
+validation loss showed evidence of a continuing downward trend before early
+stopping. The result must be described as an early-stopped four-epoch run whose
+reported model is the epoch-1 best checkpoint, not as a model trained for all
+40 epochs.
+
 ### 5.3 GPT-OSS judging
 
 The comparable baseline had 100/100 successful GPT-OSS judgments. EAT had
