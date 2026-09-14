@@ -11,7 +11,7 @@ training:
 
 data:
   contextual_emotion_cache:
-    path: /kaggle/input/datasets/cheikhmohamedahid/eat-encoder/cache/goemotions_baseline_raw_aligned_fp16_v3.pt
+    path: /kaggle/working/cache/goemotions_baseline_raw_aligned_fp16_v3.pt
 
 eat_signal:
   output_path: /kaggle/working/reports/encoder_eat_comparable_a010_lr1e4_r_h.csv

@@ -200,8 +200,7 @@ def test_comparable_low_lr_diagnostic_changes_only_intended_settings() -> None:
     assert training_config["data"]["max_source_length"] == 256
     assert training_config["data"]["max_target_length"] == 512
     assert training_config["data"]["contextual_emotion_cache"]["path"] == (
-        "/kaggle/input/datasets/cheikhmohamedahid/eat-encoder/cache/"
-        "goemotions_baseline_raw_aligned_fp16_v3.pt"
+        "/kaggle/working/cache/goemotions_baseline_raw_aligned_fp16_v3.pt"
     )
     assert training_config["training"]["output_dir"].endswith(
         "encoder_eat_comparable_a010_lr1e4"

@@ -38,6 +38,8 @@ controlled `1e-4` diagnostic below. It keeps alpha at `0.10` and inherits the
 same seed, baseline checkpoint, effective batch size, 40-epoch ceiling, and
 early-stopping patience. Its model and reports use separate paths, so the
 completed `3e-4` run is not overwritten.
+The contextual feature cache is stored under `/kaggle/working/cache`; the first
+run builds it there because Kaggle's `/kaggle/input` datasets are read-only.
 
 ```bash
 python scripts/check_comparability.py --config configs/kaggle_encoder_eat_comparable_a010_lr1e4.yaml
