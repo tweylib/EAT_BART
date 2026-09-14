@@ -44,6 +44,9 @@ python scripts/check_comparability.py --config configs/kaggle_encoder_eat_compar
 python scripts/train.py --config configs/kaggle_encoder_eat_comparable_a010_lr1e4.yaml
 python scripts/evaluate.py --config configs/kaggle_encoder_eat_comparable_a010_lr1e4_evaluate.yaml
 python scripts/score_generations.py --config configs/kaggle_encoder_eat_comparable_a010_lr1e4_score.yaml
+python scripts/judge_generations.py --config configs/kaggle_encoder_eat_comparable_a010_lr1e4_judge_gpt_oss.yaml
+python scripts/judge_generations.py --config configs/kaggle_encoder_eat_comparable_a010_lr1e4_judge_qwen.yaml
+python scripts/aggregate_judges.py --config configs/kaggle_encoder_eat_comparable_a010_lr1e4_judge_aggregate.yaml
 ```
 
 Run evaluation and scoring only after training completes. Compare the best

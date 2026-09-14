@@ -176,6 +176,15 @@ def test_comparable_low_lr_diagnostic_changes_only_intended_settings() -> None:
     scoring_config = load_yaml_config(
         "configs/kaggle_encoder_eat_comparable_a010_lr1e4_score.yaml"
     )
+    gpt_oss_config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a010_lr1e4_judge_gpt_oss.yaml"
+    )
+    qwen_config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a010_lr1e4_judge_qwen.yaml"
+    )
+    aggregate_config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a010_lr1e4_judge_aggregate.yaml"
+    )
 
     assert training_config["model"]["alpha"] == 0.10
     assert training_config["training"]["learning_rate"] == 0.0001
@@ -222,3 +231,21 @@ def test_comparable_low_lr_diagnostic_changes_only_intended_settings() -> None:
     assert scoring_config["scoring"]["validation_loss_path"] == training_config[
         "training"
     ]["output_dir"]
+    assert gpt_oss_config["llm_judge"]["input_path"] == evaluation_config[
+        "evaluation"
+    ]["output_path"]
+    assert gpt_oss_config["llm_judge"]["model"] == "openai/gpt-oss-120b"
+    assert gpt_oss_config["llm_judge"]["max_examples"] == 100
+    assert qwen_config["llm_judge"]["input_path"] == evaluation_config["evaluation"][
+        "output_path"
+    ]
+    assert qwen_config["llm_judge"]["model"] == "qwen/qwen3.6-27b"
+    assert qwen_config["llm_judge"]["max_examples"] == 100
+    assert aggregate_config["judge_aggregation"]["require_all_judges"] is True
+    assert aggregate_config["judge_aggregation"]["min_judged_examples"] == 95
+    assert aggregate_config["judge_aggregation"]["judges"][0][
+        "summary_path"
+    ] == gpt_oss_config["llm_judge"]["summary_output_path"]
+    assert aggregate_config["judge_aggregation"]["judges"][1][
+        "summary_path"
+    ] == qwen_config["llm_judge"]["summary_output_path"]
