@@ -160,3 +160,65 @@ def test_comparable_alpha_zero_ablation_is_evaluation_only() -> None:
     )
     assert evaluation_config["evaluation"]["do_sample"] is False
     assert scoring_config["scoring"]["validation_loss_path"] is None
+
+
+def test_comparable_low_lr_diagnostic_changes_only_intended_settings() -> None:
+    baseline_config = load_yaml_config("configs/kaggle_encoder_eat_comparable.yaml")
+    training_config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a010_lr1e4.yaml"
+    )
+    reference_evaluation_config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_evaluate.yaml"
+    )
+    evaluation_config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a010_lr1e4_evaluate.yaml"
+    )
+    scoring_config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a010_lr1e4_score.yaml"
+    )
+
+    assert training_config["model"]["alpha"] == 0.10
+    assert training_config["training"]["learning_rate"] == 0.0001
+    for key in (
+        "num_train_epochs",
+        "per_device_train_batch_size",
+        "per_device_eval_batch_size",
+        "gradient_accumulation_steps",
+        "early_stopping_patience",
+        "early_stopping_threshold",
+    ):
+        assert training_config["training"][key] == baseline_config["training"][key]
+    assert training_config["data"]["max_source_length"] == 256
+    assert training_config["data"]["max_target_length"] == 512
+    assert training_config["data"]["contextual_emotion_cache"]["path"] == (
+        "/kaggle/input/datasets/cheikhmohamedahid/eat-encoder/cache/"
+        "goemotions_baseline_raw_aligned_fp16_v3.pt"
+    )
+    assert training_config["training"]["output_dir"].endswith(
+        "encoder_eat_comparable_a010_lr1e4"
+    )
+
+    generation_keys = (
+        "max_eval_examples",
+        "batch_size",
+        "max_new_tokens",
+        "num_beams",
+        "do_sample",
+        "repetition_penalty",
+        "no_repeat_ngram_size",
+        "length_penalty",
+        "early_stopping",
+    )
+    for key in generation_keys:
+        assert evaluation_config["evaluation"][key] == reference_evaluation_config[
+            "evaluation"
+        ][key]
+    assert evaluation_config["evaluation"]["checkpoint_path"] == training_config[
+        "training"
+    ]["output_dir"]
+    assert scoring_config["scoring"]["input_path"] == evaluation_config["evaluation"][
+        "output_path"
+    ]
+    assert scoring_config["scoring"]["validation_loss_path"] == training_config[
+        "training"
+    ]["output_dir"]

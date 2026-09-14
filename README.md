@@ -33,6 +33,24 @@ python scripts/judge_generations.py --config configs/kaggle_encoder_eat_comparab
 python scripts/aggregate_judges.py --config configs/kaggle_encoder_eat_comparable_judge_aggregate.yaml
 ```
 
+To test whether the original `3e-4` EAT learning rate was too large, run the
+controlled `1e-4` diagnostic below. It keeps alpha at `0.10` and inherits the
+same seed, baseline checkpoint, effective batch size, 40-epoch ceiling, and
+early-stopping patience. Its model and reports use separate paths, so the
+completed `3e-4` run is not overwritten.
+
+```bash
+python scripts/check_comparability.py --config configs/kaggle_encoder_eat_comparable_a010_lr1e4.yaml
+python scripts/train.py --config configs/kaggle_encoder_eat_comparable_a010_lr1e4.yaml
+python scripts/evaluate.py --config configs/kaggle_encoder_eat_comparable_a010_lr1e4_evaluate.yaml
+python scripts/score_generations.py --config configs/kaggle_encoder_eat_comparable_a010_lr1e4_score.yaml
+```
+
+Run evaluation and scoring only after training completes. Compare the best
+validation loss with `0.7767994404`; improvement beyond ordinary rerun noise
+supports the learning-rate hypothesis, while another flat curve points toward
+limited leverage from the current fixed-alpha EAT parameterization.
+
 Evaluate the trained EAT checkpoint with its emotion branch disabled, without
 performing any further training. Evaluation loads the uploaded checkpoint at
 `/kaggle/input/datasets/cheikhmohamedahid/eat-encoder/models/encoder_eat_comparable`
