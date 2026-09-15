@@ -343,3 +343,18 @@ def test_comparable_alpha_005_changes_only_alpha_and_artifact_paths() -> None:
     assert aggregate_config["judge_aggregation"]["judges"][1][
         "summary_path"
     ] == qwen_config["llm_judge"]["summary_output_path"]
+
+
+def test_alpha_005_learning_diagnostic_is_bounded_and_uses_training_output() -> None:
+    config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a005_lr1e4_diagnostic.yaml"
+    )
+
+    assert config["model"]["alpha"] == 0.05
+    assert config["training"]["learning_rate"] == 0.0001
+    assert config["diagnostic"]["checkpoint_dir"] == config["training"]["output_dir"]
+    assert config["diagnostic"]["max_attention_batches"] == 10
+    assert config["diagnostic"]["generation_max_examples"] == 50
+    assert config["data"]["contextual_emotion_cache"]["path"].startswith(
+        "/kaggle/working/"
+    )

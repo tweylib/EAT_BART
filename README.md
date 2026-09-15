@@ -75,6 +75,19 @@ python scripts/judge_generations.py --config configs/kaggle_encoder_eat_comparab
 python scripts/aggregate_judges.py --config configs/kaggle_encoder_eat_comparable_a005_lr1e4_judge_aggregate.yaml
 ```
 
+Diagnose why the `alpha=0.05` EAT branch stops improving after its first epoch:
+
+```bash
+python scripts/diagnose_eat_learning.py --config configs/kaggle_encoder_eat_comparable_a005_lr1e4_diagnostic.yaml
+```
+
+The diagnostic automatically discovers the retained best and final checkpoints.
+On ten validation batches it compares reconstructed initialization, epoch-best,
+epoch-final, and deterministically shuffled emotion features. It reports W1/W2
+movement, emotion-attention entropy, divergence from uniform and BART attention,
+subset teacher-forced loss, and exact generation changes between the best and
+final checkpoints on 50 fixed test examples.
+
 Evaluate the trained EAT checkpoint with its emotion branch disabled, without
 performing any further training. Evaluation loads the uploaded checkpoint at
 `/kaggle/input/datasets/cheikhmohamedahid/eat-encoder/models/encoder_eat_comparable`
