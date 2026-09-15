@@ -51,9 +51,9 @@ def diagnose_eat_learning(config: dict[str, Any]) -> dict[str, Any]:
 
     checkpoint_dir = Path(diagnostic_config.get("checkpoint_dir", training_config["output_dir"]))
     best_checkpoint, final_checkpoint = resolve_diagnostic_checkpoints(checkpoint_dir)
-    baseline_checkpoint = resolve_baseline_checkpoint(
-        model_config["baseline_checkpoint_path"],
-        artifact_name=model_config.get("baseline_artifact_name", "bart_baseline_comparable"),
+    initialization_source, initialization_source_kind = resolve_initialization_source(
+        model_config=model_config,
+        best_checkpoint=best_checkpoint,
     )
 
     dataset_path = _require_file(data_config["dataset_path"], "dataset CSV")
@@ -122,7 +122,7 @@ def diagnose_eat_learning(config: dict[str, Any]) -> dict[str, Any]:
     # baseline and seed used by training. BART and the emotion model remain frozen.
     set_seed(seed)
     initial_model = load_eat_bart_from_baseline_checkpoint(
-        baseline_checkpoint, eat_config=eat_config, local_files_only=True
+        initialization_source, eat_config=eat_config, local_files_only=True
     )
     weights["initial"] = extract_eat_head_weights(initial_model)
     summary, rows = measure_attention_and_loss(
@@ -215,7 +215,8 @@ def diagnose_eat_learning(config: dict[str, Any]) -> dict[str, Any]:
     )
     condition_comparisons = compare_condition_summaries(condition_summaries)
     summary = {
-        "baseline_checkpoint": str(baseline_checkpoint),
+        "initialization_source": str(initialization_source),
+        "initialization_source_kind": initialization_source_kind,
         "best_checkpoint": str(best_checkpoint),
         "final_checkpoint": str(final_checkpoint),
         "seed": seed,
@@ -269,6 +270,37 @@ def resolve_diagnostic_checkpoints(checkpoint_dir: str | Path) -> tuple[Path, Pa
     if not best_checkpoint.exists():
         raise FileNotFoundError(f"Best checkpoint is not retained under {root}: {best_checkpoint}")
     return best_checkpoint, final_checkpoint
+
+
+def resolve_initialization_source(
+    model_config: dict[str, Any], best_checkpoint: str | Path
+) -> tuple[Path, str]:
+    """Use the baseline when mounted, otherwise reuse frozen BART checkpoint weights.
+
+    Loading an EAT checkpoint through the standard BART loader ignores the extra
+    emotion-interaction tensors and then patches freshly initialized W1/W2 tensors.
+    Because BART was frozen, its checkpoint weights are the original baseline weights.
+    """
+    try:
+        baseline = resolve_baseline_checkpoint(
+            model_config["baseline_checkpoint_path"],
+            artifact_name=model_config.get(
+                "baseline_artifact_name", "bart_baseline_comparable"
+            ),
+        )
+        return baseline, "mounted_baseline_checkpoint"
+    except FileNotFoundError:
+        fallback = Path(best_checkpoint)
+        if not fallback.exists():
+            raise FileNotFoundError(
+                "Neither the baseline checkpoint nor the best EAT checkpoint is available."
+            )
+        print(
+            "Baseline checkpoint is not mounted; reconstructing initialization from "
+            "the frozen BART weights in the best EAT checkpoint.",
+            flush=True,
+        )
+        return fallback, "best_eat_checkpoint_frozen_bart_fallback"
 
 
 def extract_eat_head_weights(model: torch.nn.Module) -> dict[tuple[int, int], torch.Tensor]:

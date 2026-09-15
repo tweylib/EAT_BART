@@ -11,6 +11,7 @@ from eat_bart.training.eat_learning_diagnostic import (
     probability_statistics,
     relative_parameter_update,
     resolve_diagnostic_checkpoints,
+    resolve_initialization_source,
     shuffle_emotion_features,
 )
 
@@ -43,6 +44,23 @@ def test_resolve_diagnostic_checkpoints_uses_best_and_last(tmp_path) -> None:
 
     assert best == first
     assert final == last
+
+
+def test_initialization_source_falls_back_to_best_eat_checkpoint(tmp_path) -> None:
+    best = tmp_path / "checkpoint-10"
+    best.mkdir()
+    missing_baseline = tmp_path / "missing-baseline"
+
+    source, kind = resolve_initialization_source(
+        {
+            "baseline_checkpoint_path": str(missing_baseline),
+            "baseline_artifact_name": "bart_baseline_comparable",
+        },
+        best,
+    )
+
+    assert source == best
+    assert kind == "best_eat_checkpoint_frozen_bart_fallback"
 
 
 def test_shuffle_emotion_features_preserves_vectors_and_zero_special_tokens() -> None:

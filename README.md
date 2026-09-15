@@ -87,6 +87,9 @@ epoch-final, and deterministically shuffled emotion features. It reports W1/W2
 movement, emotion-attention entropy, divergence from uniform and BART attention,
 subset teacher-forced loss, and exact generation changes between the best and
 final checkpoints on 50 fixed test examples.
+If the separate baseline dataset is not mounted, the script reconstructs the
+random EAT branch from the best checkpoint's BART tensors. This is valid because
+the BART tensors were frozen and therefore still equal the baseline weights.
 
 Evaluate the trained EAT checkpoint with its emotion branch disabled, without
 performing any further training. Evaluation loads the uploaded checkpoint at
