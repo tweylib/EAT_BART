@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from eat_bart.utils.config import load_yaml_config
 from eat_bart.training.train import _build_callbacks, build_training_arguments
 
@@ -252,3 +254,62 @@ def test_comparable_low_lr_diagnostic_changes_only_intended_settings() -> None:
     assert aggregate_config["judge_aggregation"]["judges"][1][
         "summary_path"
     ] == qwen_config["llm_judge"]["summary_output_path"]
+
+
+def test_comparable_alpha_005_changes_only_alpha_and_artifact_paths() -> None:
+    reference_training = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a010_lr1e4.yaml"
+    )
+    training_config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a005_lr1e4.yaml"
+    )
+    reference_evaluation = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a010_lr1e4_evaluate.yaml"
+    )
+    evaluation_config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a005_lr1e4_evaluate.yaml"
+    )
+    reference_scoring = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a010_lr1e4_score.yaml"
+    )
+    scoring_config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a005_lr1e4_score.yaml"
+    )
+
+    expected_training = deepcopy(reference_training)
+    expected_training["model"]["alpha"] = 0.05
+    expected_training["training"]["output_dir"] = (
+        "/kaggle/working/models/encoder_eat_comparable_a005_lr1e4"
+    )
+    expected_training["eat_signal"]["output_path"] = (
+        "/kaggle/working/reports/encoder_eat_comparable_a005_lr1e4_r_h.csv"
+    )
+    assert training_config == expected_training
+
+    expected_evaluation = deepcopy(reference_evaluation)
+    expected_evaluation["model"]["alpha"] = 0.05
+    expected_evaluation["training"]["output_dir"] = expected_training["training"][
+        "output_dir"
+    ]
+    expected_evaluation["eat_signal"]["output_path"] = expected_training[
+        "eat_signal"
+    ]["output_path"]
+    expected_evaluation["evaluation"]["checkpoint_path"] = expected_training[
+        "training"
+    ]["output_dir"]
+    expected_evaluation["evaluation"]["output_path"] = (
+        "/kaggle/working/reports/encoder_eat_comparable_a005_lr1e4_generations.csv"
+    )
+    assert evaluation_config == expected_evaluation
+
+    expected_scoring = deepcopy(reference_scoring)
+    expected_scoring["scoring"]["input_path"] = evaluation_config["evaluation"][
+        "output_path"
+    ]
+    expected_scoring["scoring"]["output_path"] = (
+        "/kaggle/working/reports/encoder_eat_comparable_a005_lr1e4_metrics.csv"
+    )
+    expected_scoring["scoring"]["validation_loss_path"] = expected_training[
+        "training"
+    ]["output_dir"]
+    assert scoring_config == expected_scoring
