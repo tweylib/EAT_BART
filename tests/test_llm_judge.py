@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import sys
+from types import SimpleNamespace
+
 import pytest
 
 from eat_bart.training.llm_judge import (
+    _call_groq,
     _parse_judge_response,
     _summarize_judgments,
 )
@@ -76,3 +80,38 @@ def test_summarize_judgments_ignores_failed_rows() -> None:
     assert summary["num_judged_examples"] == pytest.approx(1.0)
     assert summary["num_failed_examples"] == pytest.approx(1.0)
     assert summary["llm_empathy"] == pytest.approx(5.0)
+
+
+def test_call_groq_passes_qwen_reasoning_control(monkeypatch: pytest.MonkeyPatch) -> None:
+    request: dict[str, object] = {}
+
+    class FakeCompletions:
+        def create(self, **kwargs: object) -> SimpleNamespace:
+            request.update(kwargs)
+            message = SimpleNamespace(
+                content='{"empathy": 4, "coherence": 4, "safety": 5}'
+            )
+            return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+    class FakeGroq:
+        def __init__(self, **kwargs: object) -> None:
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setitem(sys.modules, "groq", SimpleNamespace(Groq=FakeGroq))
+
+    result = _call_groq(
+        model="qwen/qwen3.6-27b",
+        api_key="test-key",
+        prompt="Return JSON.",
+        temperature=0.0,
+        timeout_seconds=60,
+        max_retries=0,
+        rate_limit_sleep_seconds=0.0,
+        max_output_tokens=512,
+        response_format_json=True,
+        reasoning_effort="none",
+    )
+
+    assert result.startswith("{")
+    assert request["reasoning_effort"] == "none"
+    assert request["response_format"] == {"type": "json_object"}

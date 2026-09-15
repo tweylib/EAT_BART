@@ -136,6 +136,8 @@ def test_comparable_eat_protocol_is_explicit_and_self_checking() -> None:
     assert judge_config["llm_judge"]["max_examples"] == 100
     assert qwen_config["llm_judge"]["model"] == "qwen/qwen3.6-27b"
     assert qwen_config["llm_judge"]["max_examples"] == 100
+    assert qwen_config["llm_judge"]["reasoning_effort"] == "none"
+    assert qwen_config["llm_judge"]["response_format_json"] is True
     assert aggregate_config["judge_aggregation"]["require_all_judges"] is True
     assert aggregate_config["judge_aggregation"]["min_judged_examples"] == 95
 
@@ -240,6 +242,8 @@ def test_comparable_low_lr_diagnostic_changes_only_intended_settings() -> None:
     ]
     assert qwen_config["llm_judge"]["model"] == "qwen/qwen3.6-27b"
     assert qwen_config["llm_judge"]["max_examples"] == 100
+    assert qwen_config["llm_judge"]["reasoning_effort"] == "none"
+    assert qwen_config["llm_judge"]["response_format_json"] is True
     assert aggregate_config["judge_aggregation"]["require_all_judges"] is True
     assert aggregate_config["judge_aggregation"]["min_judged_examples"] == 95
     assert aggregate_config["judge_aggregation"]["judges"][0][

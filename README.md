@@ -56,6 +56,11 @@ validation loss with `0.7767994404`; improvement beyond ordinary rerun noise
 supports the learning-rate hypothesis, while another flat curve points toward
 limited leverage from the current fixed-alpha EAT parameterization.
 
+The Qwen judge runs with reasoning disabled and JSON mode enabled. This keeps
+its short scoring response from spending the output budget inside an incomplete
+`<think>` block. Rerun the complete 100-example Qwen evaluation after changing
+these settings; do not combine partial results produced by the old settings.
+
 Evaluate the trained EAT checkpoint with its emotion branch disabled, without
 performing any further training. Evaluation loads the uploaded checkpoint at
 `/kaggle/input/datasets/cheikhmohamedahid/eat-encoder/models/encoder_eat_comparable`

@@ -4,3 +4,5 @@ llm_judge:
   output_path: /kaggle/working/reports/encoder_eat_comparable_a010_lr1e4_judge_qwen.csv
   summary_output_path: /kaggle/working/reports/encoder_eat_comparable_a010_lr1e4_judge_qwen_summary.csv
   model: qwen/qwen3.6-27b
+  reasoning_effort: none
+  response_format_json: true
