@@ -63,13 +63,16 @@ these settings; do not combine partial results produced by the old settings.
 
 Run the final controlled alpha experiment below. It inherits the complete
 `alpha=0.10`, `LR=1e-4` protocol and changes only alpha to `0.05` plus its
-isolated artifact names. No LLM-judge run is part of this experiment.
+isolated artifact names.
 
 ```bash
 python scripts/check_comparability.py --config configs/kaggle_encoder_eat_comparable_a005_lr1e4.yaml
 python scripts/train.py --config configs/kaggle_encoder_eat_comparable_a005_lr1e4.yaml
 python scripts/evaluate.py --config configs/kaggle_encoder_eat_comparable_a005_lr1e4_evaluate.yaml
 python scripts/score_generations.py --config configs/kaggle_encoder_eat_comparable_a005_lr1e4_score.yaml
+python scripts/judge_generations.py --config configs/kaggle_encoder_eat_comparable_a005_lr1e4_judge_gpt_oss.yaml
+python scripts/judge_generations.py --config configs/kaggle_encoder_eat_comparable_a005_lr1e4_judge_qwen.yaml
+python scripts/aggregate_judges.py --config configs/kaggle_encoder_eat_comparable_a005_lr1e4_judge_aggregate.yaml
 ```
 
 Evaluate the trained EAT checkpoint with its emotion branch disabled, without
