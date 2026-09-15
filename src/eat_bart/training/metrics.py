@@ -10,6 +10,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+import sacrebleu
+
 TOKEN_PATTERN = re.compile(r"\w+|[^\w\s]", re.UNICODE)
 
 
@@ -87,7 +89,8 @@ def compute_generation_metrics(
         "avg_prediction_tokens": _mean(len(tokens) for tokens in prediction_tokens),
         "avg_reference_tokens": _mean(len(tokens) for tokens in reference_tokens),
         "bertscore_f1": math.nan,
-        "bleu_4": _corpus_bleu(prediction_tokens, reference_tokens, max_order=4),
+        # SacreBLEU uses the conventional 0-100 BLEU scale.
+        "bleu_4": sacrebleu.corpus_bleu(predictions, [references]).score,
         "rouge_l_f1": _mean(
             _rouge_l_f1(prediction, reference)
             for prediction, reference in zip(prediction_tokens, reference_tokens, strict=True)
@@ -246,41 +249,6 @@ def _rouge_l_f1(prediction: list[str], reference: list[str]) -> float:
     return _f1(precision, recall)
 
 
-def _corpus_bleu(
-    prediction_tokens: list[list[str]],
-    reference_tokens: list[list[str]],
-    max_order: int,
-) -> float:
-    matches_by_order = [0] * max_order
-    possible_matches_by_order = [0] * max_order
-    prediction_length = 0
-    reference_length = 0
-
-    for prediction, reference in zip(prediction_tokens, reference_tokens, strict=True):
-        prediction_length += len(prediction)
-        reference_length += len(reference)
-        for order in range(1, max_order + 1):
-            prediction_ngrams = _ngram_counts(prediction, order)
-            reference_ngrams = _ngram_counts(reference, order)
-            matches_by_order[order - 1] += sum((prediction_ngrams & reference_ngrams).values())
-            possible_matches_by_order[order - 1] += max(len(prediction) - order + 1, 0)
-
-    if prediction_length == 0:
-        return 0.0
-
-    precisions = [
-        (matches_by_order[index] + 1.0) / (possible_matches_by_order[index] + 1.0)
-        for index in range(max_order)
-    ]
-    geo_mean = _geometric_mean(precisions)
-    brevity_penalty = (
-        1.0
-        if prediction_length > reference_length
-        else pow(2.718281828459045, 1.0 - reference_length / prediction_length)
-    )
-    return brevity_penalty * geo_mean
-
-
 def _distinct_n(tokenized_texts: list[list[str]], n: int) -> float:
     all_ngrams: list[tuple[str, ...]] = []
     for tokens in tokenized_texts:
@@ -322,14 +290,6 @@ def _f1(precision: float, recall: float) -> float:
         return 0.0
 
     return 2.0 * precision * recall / (precision + recall)
-
-
-def _geometric_mean(values: list[float]) -> float:
-    product = 1.0
-    for value in values:
-        product *= value
-
-    return product ** (1.0 / len(values))
 
 
 def _mean(values: Any) -> float:

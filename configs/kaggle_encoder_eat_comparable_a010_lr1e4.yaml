@@ -1,0 +1,17 @@
+inherits: configs/kaggle_encoder_eat_comparable.yaml
+
+# Controlled learning-rate diagnostic: this keeps the comparable alpha=0.10
+# protocol unchanged and lowers only the EAT optimizer learning rate.
+model:
+  alpha: 0.10
+
+training:
+  output_dir: /kaggle/working/models/encoder_eat_comparable_a010_lr1e4
+  learning_rate: 0.0001
+
+data:
+  contextual_emotion_cache:
+    path: /kaggle/working/cache/goemotions_baseline_raw_aligned_fp16_v3.pt
+
+eat_signal:
+  output_path: /kaggle/working/reports/encoder_eat_comparable_a010_lr1e4_r_h.csv

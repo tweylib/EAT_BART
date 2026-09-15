@@ -1,0 +1,30 @@
+inherits: configs/kaggle.yaml
+
+model:
+  emotion_feature_source: goemotions_contextual
+  emotion_model_name: SamLowe/roberta-base-go_emotions
+  baseline_checkpoint_path: /kaggle/input/datasets/cheikhmohamedahid/baseline-results-5epochs/models/bart_baseline_5epoch
+  add_prefix_space: false
+  freeze_bart: true
+  emotion_dim: 768
+  emotion_hidden_dim: 32
+  attention_formula: probability_mix
+  alpha: 0.10
+  modify_encoder_self_attention: true
+  modify_decoder_self_attention: false
+  modify_cross_attention: false
+
+training:
+  output_dir: /kaggle/working/models/encoder_eat_goemotions_probmix_a010_smoke
+  max_steps: 5
+  num_train_epochs: 1
+  save_model: false
+  learning_rate: 0.0003
+
+data:
+  max_source_length: 256
+  max_target_length: 512
+  contextual_emotion_cache:
+    enabled: true
+    path: /kaggle/working/cache/goemotions_baseline_raw_aligned_fp16_v3.pt
+    batch_size: 32

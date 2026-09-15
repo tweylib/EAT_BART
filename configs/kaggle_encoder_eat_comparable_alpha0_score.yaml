@@ -1,0 +1,8 @@
+inherits: configs/kaggle_encoder_eat_comparable_score.yaml
+
+scoring:
+  input_path: /kaggle/working/reports/encoder_eat_comparable_alpha0_generations.csv
+  output_path: /kaggle/working/reports/encoder_eat_comparable_alpha0_metrics.csv
+  # The checkpoint trainer state contains alpha=0.1 training loss, not an
+  # alpha=0 validation loss. Do not attach that unrelated value here.
+  validation_loss_path:

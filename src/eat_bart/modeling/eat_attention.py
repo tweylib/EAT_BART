@@ -9,7 +9,7 @@ from typing import Literal
 import torch
 from torch import nn
 
-EATFormula = Literal["additive", "multiplicative"]
+EATFormula = Literal["additive", "multiplicative", "probability_mix"]
 
 
 @dataclass(frozen=True)
@@ -28,8 +28,10 @@ class EmotionInteraction(nn.Module):
 
     def __init__(self, config: EATAttentionConfig) -> None:
         super().__init__()
-        if config.formula not in ("additive", "multiplicative"):
+        if config.formula not in ("additive", "multiplicative", "probability_mix"):
             raise ValueError(f"Unsupported EAT attention formula: {config.formula}")
+        if not 0.0 <= config.alpha_init <= 1.0:
+            raise ValueError("alpha must be in [0, 1].")
 
         self.config = config
         self.w1_s = nn.Parameter(
@@ -38,7 +40,10 @@ class EmotionInteraction(nn.Module):
         self.w2_s = nn.Parameter(
             torch.empty(config.num_heads, config.emotion_dim, config.emotion_hidden_dim)
         )
-        self.alpha = nn.Parameter(torch.full((config.num_heads,), config.alpha_init))
+        if config.formula == "probability_mix":
+            self.register_buffer("alpha", torch.tensor(float(config.alpha_init)))
+        else:
+            self.alpha = nn.Parameter(torch.full((config.num_heads,), config.alpha_init))
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
@@ -62,6 +67,9 @@ class EmotionInteraction(nn.Module):
                 f"({self.config.emotion_dim})."
             )
 
+        # Cached contextual features may be float16 while frozen BART/EAT weights
+        # remain float32 (for example during CPU evaluation).
+        emotion_features = emotion_features.to(self.w1_s.dtype)
         # left shape: [batch_size, num_heads, seq_len, emotion_hidden_dim]
         left = torch.einsum("bse,hed->bhsd", emotion_features, self.w1_s)
         # right shape: [batch_size, num_heads, seq_len, emotion_hidden_dim]

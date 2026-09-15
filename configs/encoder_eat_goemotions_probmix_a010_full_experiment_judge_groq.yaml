@@ -1,0 +1,6 @@
+inherits: configs/kaggle_encoder_only_5epoch_experiment_judge_groq.yaml
+
+llm_judge:
+  input_path: /kaggle/working/reports/encoder_eat_goemotions_probmix_a010_full_experiment_generations.csv
+  output_path: /kaggle/working/reports/encoder_eat_goemotions_probmix_a010_full_experiment_llm_judge_groq.csv
+  summary_output_path: /kaggle/working/reports/encoder_eat_goemotions_probmix_a010_full_experiment_llm_judge_groq_summary.csv

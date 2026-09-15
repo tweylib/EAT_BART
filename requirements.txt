@@ -1,7 +1,7 @@
 torch
-transformers
+transformers==5.0.0
 datasets
-accelerate
+accelerate==1.13.0
 evaluate
 bert-score
 groq
@@ -10,3 +10,4 @@ pandas
 numpy
 pytest
 safetensors
+sacrebleu==2.6.0

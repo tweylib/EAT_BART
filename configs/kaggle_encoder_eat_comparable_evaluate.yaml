@@ -1,0 +1,19 @@
+inherits: configs/kaggle_encoder_eat_comparable.yaml
+
+evaluation:
+  model_source: eat_checkpoint
+  checkpoint_path: /kaggle/input/datasets/cheikhmohamedahid/eat-encoder/models/encoder_eat_comparable
+  output_path: /kaggle/working/reports/encoder_eat_comparable_generations.csv
+  max_eval_examples:
+  batch_size: 4
+  max_new_tokens: 512
+  num_beams: 4
+  do_sample: false
+  repetition_penalty: 1.15
+  no_repeat_ngram_size: 3
+  length_penalty: 1.15
+  early_stopping: true
+
+data:
+  contextual_emotion_cache:
+    path: /kaggle/input/datasets/cheikhmohamedahid/eat-encoder/cache/goemotions_baseline_raw_aligned_fp16_v3.pt

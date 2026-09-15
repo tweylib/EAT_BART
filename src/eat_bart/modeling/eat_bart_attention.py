@@ -90,6 +90,28 @@ class EATBartAttention(BartAttention):
         if is_cross_attention:
             raise ValueError("EATBartAttention must not be used for BART cross-attention.")
 
+        if emotion_features is None:
+            emotion_features = decoder_emotion_features if self.is_decoder else encoder_emotion_features
+
+        if emotion_features is None:
+            emotion_features = getattr(self, "_eat_emotion_features", None)
+
+        # Preserve BART's configured attention backend exactly when EAT is absent
+        # or the fixed probability-mixture coefficient disables it. In particular,
+        # alpha=0 must recover native BART rather than an eager reimplementation of
+        # an SDPA-backed checkpoint.
+        if emotion_features is None or (
+            self.emotion_interaction.config.formula == "probability_mix"
+            and self.emotion_interaction.config.alpha_init == 0.0
+        ):
+            return super().forward(
+                hidden_states=hidden_states,
+                key_value_states=key_value_states,
+                past_key_values=past_key_values,
+                attention_mask=attention_mask,
+                **kwargs,
+            )
+
         input_shape = hidden_states.shape[:-1]
         hidden_shape = (*input_shape, -1, self.head_dim)
 
@@ -125,12 +147,8 @@ class EATBartAttention(BartAttention):
                 )
 
         emotion_scores = None
-        if emotion_features is None:
-            emotion_features = decoder_emotion_features if self.is_decoder else encoder_emotion_features
-
-        if emotion_features is not None:
-            # emotion_scores shape: [batch_size, num_heads, tgt_len, src_len]
-            emotion_scores = self.emotion_interaction(emotion_features)
+        # emotion_scores shape: [batch_size, num_heads, tgt_len, src_len]
+        emotion_scores = self.emotion_interaction(emotion_features)
 
         attn_output, attn_weights = eat_eager_attention_forward(
             module=self,
@@ -162,7 +180,7 @@ def eat_eager_attention_forward(
     dropout: float = 0.0,
     **_: Any,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Compute attention with emotion scores added before mask application.
+    """Compute standard and emotion distributions, then mix without another softmax.
 
     query shape: [batch_size, num_heads, tgt_len, head_dim]
     key shape: [batch_size, num_heads, src_len, head_dim]
@@ -175,7 +193,7 @@ def eat_eager_attention_forward(
     # attn_weights shape: [batch_size, num_heads, tgt_len, src_len]
     attn_weights = torch.matmul(query, key.transpose(2, 3)) * scaling
 
-    if emotion_scores is not None:
+    if emotion_scores is not None and module.emotion_interaction.config.formula != "probability_mix":
         attn_weights = module.emotion_interaction.combine_with_attention_scores(
             attention_scores=attn_weights,
             emotion_scores=emotion_scores,
@@ -185,7 +203,17 @@ def eat_eager_attention_forward(
         mask = _attention_mask_to_bool(attention_mask)
         attn_weights = attn_weights.masked_fill(mask, torch.finfo(attn_weights.dtype).min)
 
-    attn_weights = nn.functional.softmax(attn_weights, dim=-1)
+    standard_probabilities = nn.functional.softmax(attn_weights, dim=-1)
+    if emotion_scores is not None and module.emotion_interaction.config.formula == "probability_mix":
+        if attention_mask is not None:
+            emotion_scores = emotion_scores.masked_fill(
+                _attention_mask_to_bool(attention_mask), torch.finfo(emotion_scores.dtype).min
+            )
+        emotion_probabilities = nn.functional.softmax(emotion_scores, dim=-1)
+        alpha = module.emotion_interaction.alpha.to(standard_probabilities.dtype)
+        attn_weights = (1.0 - alpha) * standard_probabilities + alpha * emotion_probabilities
+    else:
+        attn_weights = standard_probabilities
     attn_weights = nn.functional.dropout(attn_weights, p=dropout, training=module.training)
 
     # attn_output shape: [batch_size, num_heads, tgt_len, head_dim]
@@ -197,12 +225,17 @@ def eat_eager_attention_forward(
 
 
 def _attention_mask_to_bool(attention_mask: torch.Tensor) -> torch.Tensor:
-    """Convert BART attention masks to boolean masks for masked_fill.
+    """Return ``True`` exactly where attention must be masked out.
 
     attention_mask shape: [batch_size, 1, tgt_len, src_len]
     return shape: [batch_size, 1, tgt_len, src_len]
+
+    Transformers 5 passes SDPA-style boolean masks to BART attention, where
+    ``True`` means that a key is allowed.  Additive eager masks instead use a
+    negative value for a disallowed key.  ``masked_fill`` has the opposite
+    boolean convention, so boolean masks must be inverted here.
     """
     if attention_mask.dtype == torch.bool:
-        return attention_mask
+        return ~attention_mask
 
     return attention_mask < 0
