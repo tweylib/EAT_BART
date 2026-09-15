@@ -8,6 +8,7 @@ import torch
 from eat_bart.training.eat_learning_diagnostic import (
     compare_condition_summaries,
     compare_generation_rows,
+    load_contextual_cache_subset,
     probability_statistics,
     relative_parameter_update,
     resolve_diagnostic_checkpoints,
@@ -44,6 +45,37 @@ def test_resolve_diagnostic_checkpoints_uses_best_and_last(tmp_path) -> None:
 
     assert best == first
     assert final == last
+
+
+def test_load_contextual_cache_subset_validates_metadata_and_questions(tmp_path) -> None:
+    path = tmp_path / "cache.pt"
+    torch.save(
+        {
+            "model_name": "emotion-model",
+            "max_length": 256,
+            "fingerprint": "full-dataset-fingerprint",
+            "features": {"q1": torch.ones(2, 3), "q2": torch.zeros(3, 3)},
+        },
+        path,
+    )
+
+    result = load_contextual_cache_subset(
+        path,
+        questions=["q2"],
+        expected_model_name="emotion-model",
+        expected_max_length=256,
+    )
+
+    assert list(result) == ["q2"]
+    assert result["q2"].shape == (3, 3)
+
+    with pytest.raises(KeyError, match="missing 1 diagnostic questions"):
+        load_contextual_cache_subset(
+            path,
+            questions=["missing"],
+            expected_model_name="emotion-model",
+            expected_max_length=256,
+        )
 
 
 def test_initialization_source_falls_back_to_best_eat_checkpoint(tmp_path) -> None:

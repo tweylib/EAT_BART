@@ -358,3 +358,21 @@ def test_alpha_005_learning_diagnostic_is_bounded_and_uses_training_output() -> 
     assert config["data"]["contextual_emotion_cache"]["path"].startswith(
         "/kaggle/working/"
     )
+
+
+def test_uploaded_alpha_005_diagnostic_uses_saved_test_artifact() -> None:
+    config = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a005_lr1e4_diagnostic_uploaded.yaml"
+    )
+
+    artifact_root = "/kaggle/input/datasets/cheikhmohamedahid/a005-test"
+    assert config["data"]["dataset_path"] == (
+        f"{artifact_root}/reports/encoder_eat_comparable_a005_lr1e4_generations.csv"
+    )
+    assert config["data"]["response_column"] == "reference_response"
+    assert config["diagnostic"]["checkpoint_dir"].startswith(artifact_root)
+    assert config["data"]["contextual_emotion_cache"]["path"].startswith(
+        artifact_root
+    )
+    assert config["diagnostic"]["dataset_scope"] == "all"
+    assert config["diagnostic"]["allow_cache_subset"] is True

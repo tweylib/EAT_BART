@@ -81,6 +81,13 @@ Diagnose why the `alpha=0.05` EAT branch stops improving after its first epoch:
 python scripts/diagnose_eat_learning.py --config configs/kaggle_encoder_eat_comparable_a005_lr1e4_diagnostic.yaml
 ```
 
+When the completed run is attached to a fresh Kaggle session as the `a005-test`
+input dataset, use its saved test generations, checkpoints, and cache directly:
+
+```bash
+python scripts/diagnose_eat_learning.py --config configs/kaggle_encoder_eat_comparable_a005_lr1e4_diagnostic_uploaded.yaml
+```
+
 The diagnostic automatically discovers the retained best and final checkpoints.
 On ten validation batches it compares reconstructed initialization, epoch-best,
 epoch-final, and deterministically shuffled emotion features. It reports W1/W2

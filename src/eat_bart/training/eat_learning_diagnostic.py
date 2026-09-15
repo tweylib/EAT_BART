@@ -63,12 +63,19 @@ def diagnose_eat_learning(config: dict[str, Any]) -> dict[str, Any]:
         response_column=data_config.get("response_column", "response"),
         limit=data_config.get("max_examples"),
     )
-    _, validation_dataset, test_dataset = split_dataset(
-        dataset,
-        validation_size=float(data_config.get("validation_size", 0.1)),
-        test_size=float(data_config.get("test_size", 0.1)),
-        seed=seed,
-    )
+    dataset_scope = diagnostic_config.get("dataset_scope", "training_split")
+    if dataset_scope == "all":
+        validation_dataset = dataset
+        test_dataset = dataset
+    elif dataset_scope == "training_split":
+        _, validation_dataset, test_dataset = split_dataset(
+            dataset,
+            validation_size=float(data_config.get("validation_size", 0.1)),
+            test_size=float(data_config.get("test_size", 0.1)),
+            seed=seed,
+        )
+    else:
+        raise ValueError("diagnostic.dataset_scope must be 'training_split' or 'all'.")
 
     tokenizer = load_bart_tokenizer(
         best_checkpoint,
@@ -79,13 +86,23 @@ def diagnose_eat_learning(config: dict[str, Any]) -> dict[str, Any]:
         data_config["contextual_emotion_cache"]["path"], "contextual emotion cache"
     )
     all_questions = [example.question for example in dataset.examples]
-    fingerprint = contextual_cache_fingerprint(
-        all_questions,
-        model_config.get("emotion_model_name", "SamLowe/roberta-base-go_emotions"),
-        int(data_config.get("max_source_length", 256)),
-        bool(getattr(tokenizer, "add_prefix_space", False)),
-    )
-    contextual_cache = load_contextual_cache(cache_path, fingerprint)
+    if bool(diagnostic_config.get("allow_cache_subset", False)):
+        contextual_cache = load_contextual_cache_subset(
+            cache_path,
+            questions=all_questions,
+            expected_model_name=model_config.get(
+                "emotion_model_name", "SamLowe/roberta-base-go_emotions"
+            ),
+            expected_max_length=int(data_config.get("max_source_length", 256)),
+        )
+    else:
+        fingerprint = contextual_cache_fingerprint(
+            all_questions,
+            model_config.get("emotion_model_name", "SamLowe/roberta-base-go_emotions"),
+            int(data_config.get("max_source_length", 256)),
+            bool(getattr(tokenizer, "add_prefix_space", False)),
+        )
+        contextual_cache = load_contextual_cache(cache_path, fingerprint)
     collator = EATBartDataCollator(
         tokenizer=tokenizer,
         lexicon={},
@@ -220,6 +237,8 @@ def diagnose_eat_learning(config: dict[str, Any]) -> dict[str, Any]:
         "best_checkpoint": str(best_checkpoint),
         "final_checkpoint": str(final_checkpoint),
         "seed": seed,
+        "dataset_scope": dataset_scope,
+        "dataset_path": str(dataset_path),
         "max_attention_batches": max_batches,
         "conditions": condition_summaries,
         "condition_comparisons": condition_comparisons,
@@ -270,6 +289,41 @@ def resolve_diagnostic_checkpoints(checkpoint_dir: str | Path) -> tuple[Path, Pa
     if not best_checkpoint.exists():
         raise FileNotFoundError(f"Best checkpoint is not retained under {root}: {best_checkpoint}")
     return best_checkpoint, final_checkpoint
+
+
+def load_contextual_cache_subset(
+    cache_path: str | Path,
+    questions: list[str],
+    expected_model_name: str,
+    expected_max_length: int,
+) -> dict[str, torch.Tensor]:
+    """Load requested rows from a compatible full-dataset contextual cache.
+
+    An uploaded generation report contains only test questions, while the cache
+    fingerprint covers the complete original dataset. This diagnostic-only loader
+    therefore validates the cache metadata and every requested question instead of
+    requiring a fingerprint computed from rows that are intentionally absent.
+    """
+    payload = torch.load(Path(cache_path), map_location="cpu", weights_only=False)
+    if payload.get("model_name") != expected_model_name:
+        raise ValueError(
+            "Contextual cache model mismatch: "
+            f"expected={expected_model_name}, found={payload.get('model_name')}"
+        )
+    if int(payload.get("max_length", -1)) != expected_max_length:
+        raise ValueError(
+            "Contextual cache max_length mismatch: "
+            f"expected={expected_max_length}, found={payload.get('max_length')}"
+        )
+    features = payload.get("features")
+    if not isinstance(features, dict):
+        raise ValueError("Contextual cache contains no feature dictionary.")
+    missing = [question for question in questions if question not in features]
+    if missing:
+        raise KeyError(
+            f"Uploaded contextual cache is missing {len(missing)} diagnostic questions."
+        )
+    return {question: features[question] for question in questions}
 
 
 def resolve_initialization_source(
