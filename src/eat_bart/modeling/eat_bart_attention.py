@@ -9,7 +9,11 @@ from torch import nn
 from transformers.cache_utils import EncoderDecoderCache
 from transformers.models.bart.modeling_bart import BartAttention
 
-from eat_bart.modeling.eat_attention import EATAttentionConfig, EmotionInteraction
+from eat_bart.modeling.eat_attention import (
+    PROBABILITY_FORMULAS,
+    EATAttentionConfig,
+    EmotionInteraction,
+)
 
 
 class EATBartAttention(BartAttention):
@@ -101,7 +105,7 @@ class EATBartAttention(BartAttention):
         # alpha=0 must recover native BART rather than an eager reimplementation of
         # an SDPA-backed checkpoint.
         if emotion_features is None or (
-            self.emotion_interaction.config.formula == "probability_mix"
+            self.emotion_interaction.config.formula in PROBABILITY_FORMULAS
             and self.emotion_interaction.config.alpha_init == 0.0
         ):
             return super().forward(
@@ -193,7 +197,8 @@ def eat_eager_attention_forward(
     # attn_weights shape: [batch_size, num_heads, tgt_len, src_len]
     attn_weights = torch.matmul(query, key.transpose(2, 3)) * scaling
 
-    if emotion_scores is not None and module.emotion_interaction.config.formula != "probability_mix":
+    formula = module.emotion_interaction.config.formula
+    if emotion_scores is not None and formula not in PROBABILITY_FORMULAS:
         attn_weights = module.emotion_interaction.combine_with_attention_scores(
             attention_scores=attn_weights,
             emotion_scores=emotion_scores,
@@ -204,13 +209,20 @@ def eat_eager_attention_forward(
         attn_weights = attn_weights.masked_fill(mask, torch.finfo(attn_weights.dtype).min)
 
     standard_probabilities = nn.functional.softmax(attn_weights, dim=-1)
-    if emotion_scores is not None and module.emotion_interaction.config.formula == "probability_mix":
+    if emotion_scores is not None and formula in PROBABILITY_FORMULAS:
         if attention_mask is not None:
             emotion_scores = emotion_scores.masked_fill(
                 _attention_mask_to_bool(attention_mask), torch.finfo(emotion_scores.dtype).min
             )
         emotion_probabilities = nn.functional.softmax(emotion_scores, dim=-1)
         alpha = module.emotion_interaction.alpha.to(standard_probabilities.dtype)
+        if formula == "probability_compose":
+            # Compose the two row-stochastic attention distributions with true
+            # matrix multiplication.  Materialize the [B, H, L, L] result so
+            # BART's attention dropout remains after the final mixed matrix.
+            emotion_probabilities = torch.matmul(
+                standard_probabilities, emotion_probabilities
+            )
         attn_weights = (1.0 - alpha) * standard_probabilities + alpha * emotion_probabilities
     else:
         attn_weights = standard_probabilities

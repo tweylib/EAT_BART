@@ -90,3 +90,25 @@ def test_signal_supports_cached_contextual_features_and_fixed_alpha() -> None:
     assert len(rows) == 2
     assert all(row["alpha"] == pytest.approx(0.1) for row in rows)
     assert summary["emotion_token_coverage"] == pytest.approx(1.0)
+
+
+def test_probability_compose_signal_measures_probability_delta() -> None:
+    model = build_eat_bart_model_from_config(
+        BartConfig(
+            d_model=16, encoder_layers=1, decoder_layers=1,
+            encoder_attention_heads=2, decoder_attention_heads=2,
+            encoder_ffn_dim=32, decoder_ffn_dim=32, vocab_size=99,
+            pad_token_id=1, bos_token_id=0, eos_token_id=2,
+            decoder_start_token_id=2, dropout=0.0, attention_dropout=0.0,
+        ),
+        EATAttentionConfig(2, 8, 8, 0.05, "probability_compose"),
+        modify_decoder_self_attention=False,
+    )
+    batch = {
+        "input_ids": torch.tensor([[0, 5, 6, 2]]),
+        "attention_mask": torch.ones(1, 4, dtype=torch.long),
+        "encoder_emotion_features": torch.randn(1, 4, 8),
+    }
+    rows, summary = calculate_encoder_eat_signal(model, [batch])
+    assert all(row["signal_space"] == "probability_delta" for row in rows)
+    assert summary["overall_r_h"] > 0

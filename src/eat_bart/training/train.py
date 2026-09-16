@@ -14,7 +14,7 @@ from eat_bart.data.contextual_emotion import load_or_build_contextual_cache
 from eat_bart.data.dataset import MentalHealthResponseDataset, split_dataset
 from eat_bart.data.emotion_lexicon import load_nrc_lexicon
 from eat_bart.data.tokenizer import load_bart_tokenizer
-from eat_bart.modeling.eat_attention import EATAttentionConfig
+from eat_bart.modeling.eat_attention import PROBABILITY_FORMULAS, EATAttentionConfig
 from eat_bart.modeling.eat_bart_model import (
     DEFAULT_MODEL_NAME,
     load_eat_bart_from_baseline_checkpoint,
@@ -182,7 +182,7 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
         trainer_kwargs["eat_learning_rate"] = float(
             training_config.get("eat_learning_rate", base_learning_rate)
         )
-        if model_config.get("attention_formula", "additive") != "probability_mix":
+        if model_config.get("attention_formula", "additive") not in PROBABILITY_FORMULAS:
             trainer_kwargs["alpha_learning_rate"] = float(
                 training_config.get("alpha_learning_rate", base_learning_rate)
             )

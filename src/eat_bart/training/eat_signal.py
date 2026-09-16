@@ -25,10 +25,12 @@ def calculate_encoder_eat_signal(
     dataloader: Iterable[dict[str, torch.Tensor]],
     max_batches: int | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, float]]:
-    """Calculate per-head r_h on valid source-token pairs.
+    """Calculate per-head EAT modulation ratios on valid source-token pairs.
 
     r_h = mean(abs(alpha_h * S_h)) / mean(abs(A_h)), where A_h is the
-    scaled query-key score before emotion modulation and masking.
+    scaled query-key score before emotion modulation and masking.  For
+    probability composition, the analogous ratio is measured in probability
+    space using alpha * (P_A P_S - P_A) relative to P_A.
     """
     if max_batches is not None and max_batches < 1:
         raise ValueError("max_batches must be at least 1 when provided.")
@@ -76,23 +78,46 @@ def calculate_encoder_eat_signal(
             if alpha_value.dim() == 0
             else alpha_value.view(1, -1, 1, 1)
         )
-        scaled_emotion_scores = alpha * emotion_scores
+        formula = module.emotion_interaction.config.formula
+        if formula == "probability_compose":
+            # Both distributions are masked and normalized before composition,
+            # exactly as in the attention forward pass.
+            valid_keys = current_attention_mask.to(
+                device=hidden_states.device, dtype=torch.bool
+            )[:, None, None, :]
+            minimum = torch.finfo(attention_scores.dtype).min
+            standard_probabilities = torch.softmax(
+                attention_scores.masked_fill(~valid_keys, minimum), dim=-1
+            )
+            emotion_probabilities = torch.softmax(
+                emotion_scores.masked_fill(~valid_keys, minimum), dim=-1
+            )
+            composed_probabilities = torch.matmul(
+                standard_probabilities, emotion_probabilities
+            )
+            attention_measure = standard_probabilities
+            emotion_measure = alpha * (
+                composed_probabilities - standard_probabilities
+            )
+        else:
+            attention_measure = attention_scores
+            emotion_measure = alpha * emotion_scores
 
         # valid_pairs shape: [batch_size, 1, seq_len, seq_len]
         valid_tokens = current_attention_mask.to(device=hidden_states.device, dtype=torch.bool)
         valid_pairs = valid_tokens[:, None, :, None] & valid_tokens[:, None, None, :]
-        valid_pairs_float = valid_pairs.to(dtype=attention_scores.dtype)
+        valid_pairs_float = valid_pairs.to(dtype=attention_measure.dtype)
 
         accumulator = accumulators[name]
         accumulator.attention_abs_sum += (
-            (attention_scores.abs() * valid_pairs_float)
+            (attention_measure.abs() * valid_pairs_float)
             .sum(dim=(0, 2, 3))
             .detach()
             .cpu()
             .to(torch.float64)
         )
         accumulator.emotion_abs_sum += (
-            (scaled_emotion_scores.abs() * valid_pairs_float)
+            (emotion_measure.abs() * valid_pairs_float)
             .sum(dim=(0, 2, 3))
             .detach()
             .cpu()
@@ -177,6 +202,12 @@ def calculate_encoder_eat_signal(
                     "side": "encoder",
                     "layer": _layer_index(name),
                     "head": head,
+                    "signal_space": (
+                        "probability_delta"
+                        if module.emotion_interaction.config.formula
+                        == "probability_compose"
+                        else "raw_score"
+                    ),
                     "alpha": float(
                         module.emotion_interaction.alpha.detach().cpu().item()
                         if module.emotion_interaction.alpha.dim() == 0

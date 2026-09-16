@@ -9,7 +9,14 @@ from typing import Literal
 import torch
 from torch import nn
 
-EATFormula = Literal["additive", "multiplicative", "probability_mix"]
+EATFormula = Literal[
+    "additive",
+    "multiplicative",
+    "probability_mix",
+    "probability_compose",
+]
+
+PROBABILITY_FORMULAS = frozenset({"probability_mix", "probability_compose"})
 
 
 @dataclass(frozen=True)
@@ -28,7 +35,12 @@ class EmotionInteraction(nn.Module):
 
     def __init__(self, config: EATAttentionConfig) -> None:
         super().__init__()
-        if config.formula not in ("additive", "multiplicative", "probability_mix"):
+        if config.formula not in (
+            "additive",
+            "multiplicative",
+            "probability_mix",
+            "probability_compose",
+        ):
             raise ValueError(f"Unsupported EAT attention formula: {config.formula}")
         if not 0.0 <= config.alpha_init <= 1.0:
             raise ValueError("alpha must be in [0, 1].")
@@ -40,7 +52,7 @@ class EmotionInteraction(nn.Module):
         self.w2_s = nn.Parameter(
             torch.empty(config.num_heads, config.emotion_dim, config.emotion_hidden_dim)
         )
-        if config.formula == "probability_mix":
+        if config.formula in PROBABILITY_FORMULAS:
             self.register_buffer("alpha", torch.tensor(float(config.alpha_init)))
         else:
             self.alpha = nn.Parameter(torch.full((config.num_heads,), config.alpha_init))

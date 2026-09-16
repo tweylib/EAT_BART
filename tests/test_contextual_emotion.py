@@ -89,6 +89,57 @@ def test_probability_mix_alpha_endpoints_and_normalization() -> None:
     assert torch.allclose(p1.sum(-1), torch.ones_like(p1.sum(-1)))
 
 
+def _probability_compose(
+    alpha: float, dropout: float = 0.0, dropout_seed: int | None = None
+):
+    module = EATBartAttention(
+        embed_dim=4, num_heads=1,
+        eat_config=EATAttentionConfig(
+            num_heads=1, emotion_dim=2, emotion_hidden_dim=2,
+            alpha_init=alpha, formula="probability_compose",
+        ),
+    )
+    query = torch.tensor([[[[1.0, 0.0], [0.0, 1.0]]]])
+    key = query.clone()
+    value = torch.tensor([[[[1.0, 2.0], [3.0, 4.0]]]])
+    emotion_scores = torch.tensor([[[[0.0, 2.0], [2.0, 0.0]]]])
+    if dropout_seed is not None:
+        torch.manual_seed(dropout_seed)
+    return eat_eager_attention_forward(
+        module, query, key, value, None, emotion_scores, dropout=dropout
+    )
+
+
+def test_probability_compose_matches_matrix_product_and_stays_normalized() -> None:
+    _, p0 = _probability_compose(0.0)
+    standard = torch.softmax(
+        torch.tensor([[[[2**-0.5, 0.0], [0.0, 2**-0.5]]]]), -1
+    )
+    assert torch.allclose(p0, standard)
+
+    _, p1 = _probability_compose(1.0)
+    emotion = torch.softmax(
+        torch.tensor([[[[0.0, 2.0], [2.0, 0.0]]]]), -1
+    )
+    assert torch.allclose(p1, torch.matmul(standard, emotion))
+    assert torch.allclose(p1.sum(-1), torch.ones_like(p1.sum(-1)))
+
+
+def test_probability_compose_applies_dropout_after_final_matrix() -> None:
+    _, actual = _probability_compose(0.25, dropout=0.5, dropout_seed=19)
+
+    standard = torch.softmax(
+        torch.tensor([[[[2**-0.5, 0.0], [0.0, 2**-0.5]]]]), -1
+    )
+    emotion = torch.softmax(
+        torch.tensor([[[[0.0, 2.0], [2.0, 0.0]]]]), -1
+    )
+    mixed = 0.75 * standard + 0.25 * torch.matmul(standard, emotion)
+    torch.manual_seed(19)
+    expected = torch.nn.functional.dropout(mixed, p=0.5, training=True)
+    assert torch.equal(actual, expected)
+
+
 def test_probability_mix_alpha_is_fixed() -> None:
     config = EATAttentionConfig(num_heads=2, alpha_init=0.1, formula="probability_mix")
     module = EATBartAttention(embed_dim=8, num_heads=2, eat_config=config)
@@ -114,30 +165,30 @@ def test_contextual_pairwise_weights_receive_gradients_without_projection() -> N
     assert module.emotion_interaction.w2_s.grad.norm() > 0
 
 
-def test_probability_mix_boolean_mask_keeps_valid_keys_trainable() -> None:
+def test_probability_formulas_boolean_mask_keep_valid_keys_trainable() -> None:
     """Transformers 5 boolean masks use True for positions that may attend."""
     torch.manual_seed(13)
-    module = EATBartAttention(
-        embed_dim=8, num_heads=2, dropout=0.0,
-        eat_config=EATAttentionConfig(2, 768, 16, 0.1, "probability_mix"),
-    )
     hidden_states = torch.randn(2, 5, 8)
     contextual = torch.randn(2, 5, 768)
     allowed = torch.ones(2, 1, 5, 5, dtype=torch.bool)
     allowed[1, :, :, -1] = False
+    for formula in ("probability_mix", "probability_compose"):
+        module = EATBartAttention(
+            embed_dim=8, num_heads=2, dropout=0.0,
+            eat_config=EATAttentionConfig(2, 768, 16, 0.1, formula),
+        )
+        output, probabilities = module(
+            hidden_states,
+            attention_mask=allowed,
+            emotion_features=contextual,
+        )
+        output.square().mean().backward()
 
-    output, probabilities = module(
-        hidden_states,
-        attention_mask=allowed,
-        emotion_features=contextual,
-    )
-    output.square().mean().backward()
-
-    assert torch.count_nonzero(probabilities[1, :, :, -1]) == 0
-    assert module.emotion_interaction.w1_s.grad is not None
-    assert module.emotion_interaction.w1_s.grad.norm() > 0
-    assert module.emotion_interaction.w2_s.grad is not None
-    assert module.emotion_interaction.w2_s.grad.norm() > 0
+        assert torch.count_nonzero(probabilities[1, :, :, -1]) == 0
+        assert module.emotion_interaction.w1_s.grad is not None
+        assert module.emotion_interaction.w1_s.grad.norm() > 0
+        assert module.emotion_interaction.w2_s.grad is not None
+        assert module.emotion_interaction.w2_s.grad.norm() > 0
 
 
 import pytest
