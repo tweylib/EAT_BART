@@ -393,6 +393,66 @@ def test_probability_compose_experiment_changes_only_formula_and_artifacts() -> 
     )
 
 
+def test_tied_orthogonal_experiment_changes_only_initialization_and_artifacts() -> None:
+    reference = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_a005_lr1e4.yaml"
+    )
+    training = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_tied_orthogonal_a005_lr1e4.yaml"
+    )
+    evaluation = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_tied_orthogonal_a005_lr1e4_evaluate.yaml"
+    )
+    scoring = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_tied_orthogonal_a005_lr1e4_score.yaml"
+    )
+    diagnostic = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_tied_orthogonal_a005_lr1e4_diagnostic.yaml"
+    )
+    gpt_oss = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_tied_orthogonal_a005_lr1e4_judge_gpt_oss.yaml"
+    )
+    qwen = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_tied_orthogonal_a005_lr1e4_judge_qwen.yaml"
+    )
+    aggregate = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_tied_orthogonal_a005_lr1e4_judge_aggregate.yaml"
+    )
+
+    expected = deepcopy(reference)
+    expected["model"]["emotion_weight_initialization"] = "tied_orthogonal"
+    expected["training"]["output_dir"] = (
+        "/kaggle/working/models/encoder_eat_comparable_tied_orthogonal_a005_lr1e4"
+    )
+    expected["eat_signal"]["output_path"] = (
+        "/kaggle/working/reports/"
+        "encoder_eat_comparable_tied_orthogonal_a005_lr1e4_r_h.csv"
+    )
+    assert training == expected
+    assert training["training"]["num_train_epochs"] == 40
+    assert training["training"]["early_stopping_patience"] == 3
+    assert training["model"]["attention_formula"] == "probability_mix"
+    assert training["model"]["alpha"] == 0.05
+    assert training["training"]["learning_rate"] == 0.0001
+    assert evaluation["evaluation"]["checkpoint_path"] == training["training"][
+        "output_dir"
+    ]
+    assert scoring["scoring"]["validation_loss_path"] == training["training"][
+        "output_dir"
+    ]
+    assert diagnostic["diagnostic"]["checkpoint_dir"] == training["training"][
+        "output_dir"
+    ]
+    assert gpt_oss["llm_judge"]["max_examples"] == 100
+    assert qwen["llm_judge"]["max_examples"] == 100
+    assert aggregate["judge_aggregation"]["judges"][0]["summary_path"] == (
+        gpt_oss["llm_judge"]["summary_output_path"]
+    )
+    assert aggregate["judge_aggregation"]["judges"][1]["summary_path"] == (
+        qwen["llm_judge"]["summary_output_path"]
+    )
+
+
 def test_alpha_005_learning_diagnostic_is_bounded_and_uses_training_output() -> None:
     config = load_yaml_config(
         "configs/kaggle_encoder_eat_comparable_a005_lr1e4_diagnostic.yaml"

@@ -108,6 +108,9 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
         emotion_hidden_dim=int(model_config.get("emotion_hidden_dim", 32)),
         alpha_init=float(model_config.get("alpha", model_config.get("alpha_init", 0.05))),
         formula=model_config.get("attention_formula", "additive"),
+        weight_initialization=model_config.get(
+            "emotion_weight_initialization", "independent_xavier"
+        ),
     )
     if baseline_checkpoint_path:
         model = load_eat_bart_from_baseline_checkpoint(

@@ -1,0 +1,14 @@
+inherits: configs/kaggle_encoder_eat_comparable_a005_lr1e4.yaml
+
+# Controlled initialization experiment.  Each layer/head starts with an
+# independent orthogonal W, copied into both W1 and W2.  The two Parameters
+# train independently after initialization.  All other model/training settings
+# remain identical to the validated alpha=0.05 probability-mixture run.
+model:
+  emotion_weight_initialization: tied_orthogonal
+
+training:
+  output_dir: /kaggle/working/models/encoder_eat_comparable_tied_orthogonal_a005_lr1e4
+
+eat_signal:
+  output_path: /kaggle/working/reports/encoder_eat_comparable_tied_orthogonal_a005_lr1e4_r_h.csv

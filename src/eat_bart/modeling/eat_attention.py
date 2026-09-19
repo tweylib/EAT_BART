@@ -15,6 +15,7 @@ EATFormula = Literal[
     "probability_mix",
     "probability_compose",
 ]
+EATWeightInitialization = Literal["independent_xavier", "tied_orthogonal"]
 
 PROBABILITY_FORMULAS = frozenset({"probability_mix", "probability_compose"})
 
@@ -28,6 +29,7 @@ class EATAttentionConfig:
     emotion_hidden_dim: int = 32
     alpha_init: float = 0.05
     formula: EATFormula = "additive"
+    weight_initialization: EATWeightInitialization = "independent_xavier"
 
 
 class EmotionInteraction(nn.Module):
@@ -44,6 +46,22 @@ class EmotionInteraction(nn.Module):
             raise ValueError(f"Unsupported EAT attention formula: {config.formula}")
         if not 0.0 <= config.alpha_init <= 1.0:
             raise ValueError("alpha must be in [0, 1].")
+        if config.weight_initialization not in (
+            "independent_xavier",
+            "tied_orthogonal",
+        ):
+            raise ValueError(
+                "Unsupported EAT weight initialization: "
+                f"{config.weight_initialization}"
+            )
+        if (
+            config.weight_initialization == "tied_orthogonal"
+            and config.emotion_dim < config.emotion_hidden_dim
+        ):
+            raise ValueError(
+                "tied_orthogonal requires emotion_dim >= emotion_hidden_dim "
+                "so every projection has orthonormal columns."
+            )
 
         self.config = config
         self.w1_s = nn.Parameter(
@@ -60,8 +78,17 @@ class EmotionInteraction(nn.Module):
 
     def reset_parameters(self) -> None:
         """Initialize W1_s, W2_s, and alpha."""
-        nn.init.xavier_uniform_(self.w1_s)
-        nn.init.xavier_uniform_(self.w2_s)
+        if self.config.weight_initialization == "tied_orthogonal":
+            # Each head receives its own random semi-orthogonal projection.
+            # W1/W2 start with equal values but remain distinct Parameters, so
+            # optimization can make the two projections diverge immediately.
+            for head in range(self.config.num_heads):
+                nn.init.orthogonal_(self.w1_s[head])
+            with torch.no_grad():
+                self.w2_s.copy_(self.w1_s)
+        else:
+            nn.init.xavier_uniform_(self.w1_s)
+            nn.init.xavier_uniform_(self.w2_s)
         with torch.no_grad():
             self.alpha.fill_(self.config.alpha_init)
 

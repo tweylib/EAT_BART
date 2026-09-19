@@ -125,6 +125,9 @@ def diagnose_eat_learning(config: dict[str, Any]) -> dict[str, Any]:
         emotion_hidden_dim=int(model_config.get("emotion_hidden_dim", 32)),
         alpha_init=float(model_config.get("alpha", 0.05)),
         formula=model_config.get("attention_formula", "probability_mix"),
+        weight_initialization=model_config.get(
+            "emotion_weight_initialization", "independent_xavier"
+        ),
     )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     max_batches = int(diagnostic_config.get("max_attention_batches", 10))

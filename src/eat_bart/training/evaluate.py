@@ -95,6 +95,9 @@ def run_generation(config: dict[str, Any]) -> Path:
         emotion_hidden_dim=int(model_config.get("emotion_hidden_dim", 32)),
         alpha_init=float(model_config.get("alpha", model_config.get("alpha_init", 0.05))),
         formula=model_config.get("attention_formula", "additive"),
+        weight_initialization=model_config.get(
+            "emotion_weight_initialization", "independent_xavier"
+        ),
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
