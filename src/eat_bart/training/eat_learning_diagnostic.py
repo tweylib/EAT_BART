@@ -24,6 +24,7 @@ from eat_bart.modeling.eat_bart_model import (
     load_eat_bart_checkpoint,
     load_eat_bart_from_baseline_checkpoint,
 )
+from eat_bart.training.alpha_schedule import set_probability_alpha
 from eat_bart.training.comparability import resolve_baseline_checkpoint
 from eat_bart.training.evaluate import _generate_rows
 from eat_bart.training.train import _require_file
@@ -144,6 +145,12 @@ def diagnose_eat_learning(config: dict[str, Any]) -> dict[str, Any]:
     initial_model = load_eat_bart_from_baseline_checkpoint(
         initialization_source, eat_config=eat_config, local_files_only=True
     )
+    alpha_warmup = training_config.get("alpha_warmup", {})
+    if bool(alpha_warmup.get("enabled", False)):
+        set_probability_alpha(
+            initial_model,
+            float(alpha_warmup.get("start_alpha", 0.005)),
+        )
     weights["initial"] = extract_eat_head_weights(initial_model)
     summary, rows = measure_attention_and_loss(
         initial_model,

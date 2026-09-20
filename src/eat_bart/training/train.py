@@ -6,8 +6,14 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
-from transformers import EarlyStoppingCallback, Seq2SeqTrainer, Seq2SeqTrainingArguments
+from transformers import (
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    EarlyStoppingCallback,
+    Seq2SeqTrainer,
+    Seq2SeqTrainingArguments,
+    TrainerCallback,
+)
 
 from eat_bart.data.collator import EATBartDataCollator
 from eat_bart.data.contextual_emotion import load_or_build_contextual_cache
@@ -20,13 +26,14 @@ from eat_bart.modeling.eat_bart_model import (
     load_eat_bart_from_baseline_checkpoint,
     load_eat_bart_model,
 )
-from eat_bart.training.eat_signal import calculate_encoder_eat_signal, write_eat_signal_csv
+from eat_bart.training.alpha_schedule import LinearAlphaWarmupCallback
 from eat_bart.training.comparability import (
     resolve_baseline_checkpoint,
     validate_baseline_manifest,
     validate_runtime,
     write_run_manifest,
 )
+from eat_bart.training.eat_signal import calculate_encoder_eat_signal, write_eat_signal_csv
 from eat_bart.training.optimizer import DifferentialLearningRateTrainer
 from eat_bart.utils.config import load_yaml_config
 from eat_bart.utils.seed import set_seed
@@ -176,7 +183,11 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
     )
 
     training_arguments = build_training_arguments(training_config)
-    callbacks = _build_callbacks(training_config)
+    callbacks = _build_callbacks(
+        training_config,
+        alpha_target=eat_config.alpha_init,
+        attention_formula=eat_config.formula,
+    )
     trainer_class: type[Seq2SeqTrainer] = Seq2SeqTrainer
     trainer_kwargs: dict[str, Any] = {}
     if "eat_learning_rate" in training_config or "alpha_learning_rate" in training_config:
@@ -254,28 +265,46 @@ def build_training_arguments(training_config: dict[str, Any]) -> Seq2SeqTraining
     )
 
 
-def _build_callbacks(training_config: dict[str, Any]) -> list[EarlyStoppingCallback]:
-    """Build optional validation-based early stopping callbacks."""
+def _build_callbacks(
+    training_config: dict[str, Any],
+    alpha_target: float | None = None,
+    attention_formula: str | None = None,
+) -> list[TrainerCallback]:
+    """Build optional early-stopping and alpha-scheduling callbacks."""
+    callbacks: list[TrainerCallback] = []
     patience = training_config.get("early_stopping_patience")
-    if patience is None:
-        return []
-
-    patience = int(patience)
-    if patience < 1:
-        raise ValueError("early_stopping_patience must be at least 1.")
-    if training_config.get("eval_strategy", "epoch") == "no":
-        raise ValueError("Early stopping requires evaluation to be enabled.")
-    if not bool(training_config.get("load_best_model_at_end", False)):
-        raise ValueError("Early stopping requires load_best_model_at_end: true.")
-
-    return [
-        EarlyStoppingCallback(
-            early_stopping_patience=patience,
-            early_stopping_threshold=float(
-                training_config.get("early_stopping_threshold", 0.0)
-            ),
+    if patience is not None:
+        patience = int(patience)
+        if patience < 1:
+            raise ValueError("early_stopping_patience must be at least 1.")
+        if training_config.get("eval_strategy", "epoch") == "no":
+            raise ValueError("Early stopping requires evaluation to be enabled.")
+        if not bool(training_config.get("load_best_model_at_end", False)):
+            raise ValueError("Early stopping requires load_best_model_at_end: true.")
+        callbacks.append(
+            EarlyStoppingCallback(
+                early_stopping_patience=patience,
+                early_stopping_threshold=float(
+                    training_config.get("early_stopping_threshold", 0.0)
+                ),
+            )
         )
-    ]
+
+    warmup_config = training_config.get("alpha_warmup", {})
+    if bool(warmup_config.get("enabled", False)):
+        if attention_formula not in PROBABILITY_FORMULAS:
+            raise ValueError("Alpha warmup requires a probability-based attention formula.")
+        if alpha_target is None:
+            raise ValueError("Alpha warmup requires the model target alpha.")
+        callbacks.append(
+            LinearAlphaWarmupCallback(
+                start_alpha=float(warmup_config.get("start_alpha", 0.005)),
+                target_alpha=float(alpha_target),
+                warmup_epochs=float(warmup_config.get("warmup_epochs", 5.0)),
+            )
+        )
+
+    return callbacks
 
 
 def _run_eat_signal_diagnostic(

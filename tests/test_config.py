@@ -1,7 +1,10 @@
 from copy import deepcopy
 
+import pytest
+
 from eat_bart.utils.config import load_yaml_config
 from eat_bart.training.train import _build_callbacks, build_training_arguments
+from eat_bart.training.alpha_schedule import LinearAlphaWarmupCallback
 
 
 def test_kaggle_config_inherits_default_config() -> None:
@@ -451,6 +454,88 @@ def test_tied_orthogonal_experiment_changes_only_initialization_and_artifacts() 
     assert aggregate["judge_aggregation"]["judges"][1]["summary_path"] == (
         qwen["llm_judge"]["summary_output_path"]
     )
+
+
+def test_warmup_ds64_experiment_has_nonzero_schedule_and_no_early_stopping() -> None:
+    reference = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_tied_orthogonal_a005_lr1e4.yaml"
+    )
+    training = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4.yaml"
+    )
+    evaluation = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_evaluate.yaml"
+    )
+    scoring = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_score.yaml"
+    )
+    diagnostic = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_diagnostic.yaml"
+    )
+    gpt_oss = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_judge_gpt_oss.yaml"
+    )
+    qwen = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_judge_qwen.yaml"
+    )
+    aggregate = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_judge_aggregate.yaml"
+    )
+
+    expected = deepcopy(reference)
+    expected["model"]["emotion_hidden_dim"] = 64
+    expected["training"]["output_dir"] = (
+        "/kaggle/working/models/encoder_eat_comparable_warmup_ds64_a005_lr1e4"
+    )
+    expected["training"]["early_stopping_patience"] = None
+    expected["training"]["alpha_warmup"] = {
+        "enabled": True,
+        "start_alpha": 0.005,
+        "warmup_epochs": 5,
+    }
+    expected["eat_signal"]["output_path"] = (
+        "/kaggle/working/reports/"
+        "encoder_eat_comparable_warmup_ds64_a005_lr1e4_r_h.csv"
+    )
+    assert training == expected
+    assert training["training"]["num_train_epochs"] == 40
+    assert training["training"]["load_best_model_at_end"] is True
+    assert training["model"]["alpha"] == 0.05
+    assert training["model"]["emotion_weight_initialization"] == "tied_orthogonal"
+    assert evaluation["evaluation"]["checkpoint_path"] == training["training"][
+        "output_dir"
+    ]
+    assert scoring["scoring"]["validation_loss_path"] == training["training"][
+        "output_dir"
+    ]
+    assert diagnostic["diagnostic"]["checkpoint_dir"] == training["training"][
+        "output_dir"
+    ]
+    assert gpt_oss["llm_judge"]["input_path"] == evaluation["evaluation"][
+        "output_path"
+    ]
+    assert gpt_oss["llm_judge"]["max_examples"] == 100
+    assert qwen["llm_judge"]["input_path"] == evaluation["evaluation"][
+        "output_path"
+    ]
+    assert qwen["llm_judge"]["max_examples"] == 100
+    assert aggregate["judge_aggregation"]["judges"][0]["summary_path"] == (
+        gpt_oss["llm_judge"]["summary_output_path"]
+    )
+    assert aggregate["judge_aggregation"]["judges"][1]["summary_path"] == (
+        qwen["llm_judge"]["summary_output_path"]
+    )
+
+    callbacks = _build_callbacks(
+        training["training"],
+        alpha_target=training["model"]["alpha"],
+        attention_formula=training["model"]["attention_formula"],
+    )
+    assert len(callbacks) == 1
+    assert isinstance(callbacks[0], LinearAlphaWarmupCallback)
+    assert callbacks[0].start_alpha == pytest.approx(0.005)
+    assert callbacks[0].target_alpha == pytest.approx(0.05)
+    assert callbacks[0].warmup_epochs == pytest.approx(5)
 
 
 def test_alpha_005_learning_diagnostic_is_bounded_and_uses_training_output() -> None:
