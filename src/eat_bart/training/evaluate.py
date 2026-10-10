@@ -19,6 +19,7 @@ from eat_bart.data.emotion_lexicon import load_nrc_lexicon
 from eat_bart.data.tokenizer import load_bart_tokenizer
 from eat_bart.modeling.eat_attention import EATAttentionConfig
 from eat_bart.modeling.eat_bart_model import DEFAULT_MODEL_NAME, load_eat_bart_checkpoint
+from eat_bart.training.emotion_ablation import apply_emotion_feature_condition
 from eat_bart.training.train import _require_file
 from eat_bart.utils.config import load_yaml_config
 from eat_bart.utils.seed import set_seed
@@ -185,6 +186,13 @@ def _generate_rows(
                 padding=True, truncation=True,
                 strategy=data_config.get("subword_strategy", "single"),
             )
+        encoder_emotion_features = apply_emotion_feature_condition(
+            encoder_emotion_features,
+            encoded["attention_mask"],
+            evaluation_config.get("emotion_feature_condition", "aligned"),
+            seed=int(evaluation_config.get("emotion_feature_shuffle_seed", 1729)),
+            example_offset=start_index,
+        )
         encoded = {key: value.to(device) for key, value in encoded.items()}
         encoder_emotion_features = encoder_emotion_features.to(device)
 

@@ -569,3 +569,50 @@ def test_uploaded_alpha_005_diagnostic_uses_saved_test_artifact() -> None:
     )
     assert config["diagnostic"]["dataset_scope"] == "all"
     assert config["diagnostic"]["allow_cache_subset"] is True
+
+
+def test_warmup_causal_ablation_configs_are_evaluation_only_and_isolated() -> None:
+    shuffled = load_yaml_config(
+        "configs/"
+        "kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "causal_shuffled_evaluate.yaml"
+    )
+    zero = load_yaml_config(
+        "configs/"
+        "kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "causal_zero_evaluate.yaml"
+    )
+    shuffled_score = load_yaml_config(
+        "configs/"
+        "kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "causal_shuffled_score.yaml"
+    )
+
+    assert shuffled["evaluation"]["emotion_feature_condition"] == "shuffled"
+    assert shuffled["evaluation"]["emotion_feature_shuffle_seed"] == 1729
+    assert zero["evaluation"]["emotion_feature_condition"] == "zero"
+    assert shuffled["model"]["alpha"] == pytest.approx(0.05)
+    assert zero["model"]["alpha"] == pytest.approx(0.05)
+    assert shuffled["model"]["emotion_hidden_dim"] == 64
+    assert "validation_loss_path" not in shuffled_score["scoring"]
+    assert "/kaggle/input/" in shuffled["evaluation"]["checkpoint_path"]
+
+
+def test_warmup_pairwise_configs_keep_aligned_eat_on_the_right() -> None:
+    baseline = load_yaml_config(
+        "configs/"
+        "kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "pairwise_baseline.yaml"
+    )["pairwise_judge"]
+    shuffled = load_yaml_config(
+        "configs/"
+        "kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "pairwise_shuffled.yaml"
+    )["pairwise_judge"]
+
+    assert baseline["left_name"] == "baseline"
+    assert baseline["right_name"] == "aligned_eat"
+    assert shuffled["left_name"] == "shuffled_eat"
+    assert shuffled["right_name"] == "aligned_eat"
+    assert baseline["max_examples"] == 100
+    assert shuffled["max_examples"] == 100

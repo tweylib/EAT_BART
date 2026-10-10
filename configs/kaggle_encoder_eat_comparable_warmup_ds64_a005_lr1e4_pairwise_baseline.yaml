@@ -1,0 +1,20 @@
+pairwise_judge:
+  left_input_path: /kaggle/input/datasets/cheikhtidjanitweylib/baseline-30-eps-new-model/reports/bart_baseline_comparable_generations.csv
+  right_input_path: /kaggle/input/datasets/cheikhmohamedahid/a005-test/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_generations.csv
+  left_name: baseline
+  right_name: aligned_eat
+  output_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_pairwise_baseline.csv
+  summary_output_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_pairwise_baseline_summary.csv
+  provider: groq
+  model: openai/gpt-oss-120b
+  api_key_env: GROQ_API_KEY
+  max_examples: 100
+  order_seed: 20261010
+  sleep_seconds: 2.0
+  temperature: 0.0
+  timeout_seconds: 60
+  max_retries: 3
+  rate_limit_sleep_seconds: 30.0
+  continue_on_error: true
+  max_output_tokens: 512
+  response_format_json: false

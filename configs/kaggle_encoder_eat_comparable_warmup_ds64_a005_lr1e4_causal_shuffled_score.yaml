@@ -1,0 +1,11 @@
+scoring:
+  input_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_causal_shuffled_generations.csv
+  output_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_causal_shuffled_metrics.csv
+  prediction_column: generated_response
+  reference_column: reference_response
+  include_bertscore: true
+  bertscore_model_type: roberta-large
+  bertscore_batch_size: 8
+
+# Deliberately no validation_loss_path: checkpoint trainer history contains the
+# aligned training loss, not a condition-specific shuffled evaluation loss.
