@@ -88,6 +88,43 @@ def test_aggregate_judge_summaries_weights_partial_judges_by_completed_examples(
     )
 
 
+def test_required_judges_reject_partial_aggregate(tmp_path) -> None:
+    complete_path = tmp_path / "complete.csv"
+    failed_path = tmp_path / "failed.csv"
+    _write_summary(
+        complete_path,
+        {
+            "num_requested_examples": "100",
+            "num_judged_examples": "100",
+            "llm_empathy": "4",
+            "llm_coherence": "4",
+            "llm_safety": "5",
+        },
+    )
+    _write_summary(
+        failed_path,
+        {
+            "num_requested_examples": "100",
+            "num_judged_examples": "0",
+            "llm_empathy": "0",
+            "llm_coherence": "0",
+            "llm_safety": "0",
+        },
+    )
+
+    with pytest.raises(ValueError, match="Not all configured judges"):
+        aggregate_judge_summaries(
+            judges=[
+                {"name": "complete", "summary_path": str(complete_path)},
+                {"name": "failed", "summary_path": str(failed_path)},
+            ],
+            output_path=tmp_path / "aggregate.csv",
+            min_completion_rate=0.95,
+            min_judged_examples=95,
+            require_all_judges=True,
+        )
+
+
 def _write_summary(path, row: dict[str, str]) -> None:
     with path.open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=list(row))

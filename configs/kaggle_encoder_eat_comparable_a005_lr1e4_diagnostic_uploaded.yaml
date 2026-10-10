@@ -1,0 +1,16 @@
+inherits: configs/kaggle_encoder_eat_comparable_a005_lr1e4_diagnostic.yaml
+
+# Diagnostic for a fresh Kaggle session with the completed run attached as the
+# cheikhmohamedahid/a005-test input dataset. The saved generation report supplies
+# the exact 1,987-example test set; the original train/validation CSV is unnecessary.
+data:
+  dataset_path: /kaggle/input/datasets/cheikhmohamedahid/a005-test/reports/encoder_eat_comparable_a005_lr1e4_generations.csv
+  question_column: question
+  response_column: reference_response
+  contextual_emotion_cache:
+    path: /kaggle/input/datasets/cheikhmohamedahid/a005-test/cache/goemotions_baseline_raw_aligned_fp16_v3.pt
+
+diagnostic:
+  checkpoint_dir: /kaggle/input/datasets/cheikhmohamedahid/a005-test/models/encoder_eat_comparable_a005_lr1e4
+  dataset_scope: all
+  allow_cache_subset: true

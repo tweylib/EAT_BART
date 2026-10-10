@@ -1,0 +1,20 @@
+inherits: configs/kaggle_encoder_eat_comparable_tied_orthogonal_a005_lr1e4.yaml
+
+# Final frozen-BART capacity/scheduling experiment:
+# - tied-orthogonal W1/W2 initialization
+# - d_s = 64
+# - alpha linearly warms from 0.005 to model.alpha=0.05 over five epochs
+# - no early stopping; all 40 configured epochs may run
+model:
+  emotion_hidden_dim: 64
+
+training:
+  output_dir: /kaggle/working/models/encoder_eat_comparable_warmup_ds64_a005_lr1e4
+  early_stopping_patience:
+  alpha_warmup:
+    enabled: true
+    start_alpha: 0.005
+    warmup_epochs: 5
+
+eat_signal:
+  output_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_r_h.csv

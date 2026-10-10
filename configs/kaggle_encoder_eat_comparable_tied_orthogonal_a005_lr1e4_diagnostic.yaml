@@ -1,0 +1,11 @@
+inherits: configs/kaggle_encoder_eat_comparable_tied_orthogonal_a005_lr1e4_evaluate.yaml
+
+diagnostic:
+  checkpoint_dir: /kaggle/working/models/encoder_eat_comparable_tied_orthogonal_a005_lr1e4
+  output_dir: /kaggle/working/reports
+  output_prefix: encoder_eat_comparable_tied_orthogonal_a005_lr1e4_learning_diagnostic
+  batch_size: 4
+  max_attention_batches: 10
+  shuffle_seed: 1729
+  generation_max_examples: 50
+  generation_batch_size: 4

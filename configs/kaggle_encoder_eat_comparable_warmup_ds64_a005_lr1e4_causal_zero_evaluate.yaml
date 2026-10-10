@@ -1,0 +1,7 @@
+inherits: configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_causal_shuffled_evaluate.yaml
+
+# Zero features make P_S uniform over valid source positions. This preserves
+# the alpha=0.05 mixture while removing contextual emotion content.
+evaluation:
+  output_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_causal_zero_generations.csv
+  emotion_feature_condition: zero

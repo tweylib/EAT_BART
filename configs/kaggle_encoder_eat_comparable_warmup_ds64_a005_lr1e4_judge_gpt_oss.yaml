@@ -1,0 +1,6 @@
+inherits: configs/kaggle_encoder_eat_comparable_judge_gpt_oss.yaml
+
+llm_judge:
+  input_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_generations.csv
+  output_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_judge_gpt_oss.csv
+  summary_output_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_judge_gpt_oss_summary.csv

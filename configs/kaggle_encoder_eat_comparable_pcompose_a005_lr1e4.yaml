@@ -1,0 +1,14 @@
+inherits: configs/kaggle_encoder_eat_comparable_a005_lr1e4.yaml
+
+# Controlled probability-composition experiment.  Relative to the validated
+# alpha=0.05 run, only the attention operation and artifact paths change:
+#   P = (1 - alpha) P_A + alpha (P_A @ P_S)
+# BART and GoEmotions remain frozen; only W1/W2 are optimized.
+model:
+  attention_formula: probability_compose
+
+training:
+  output_dir: /kaggle/working/models/encoder_eat_comparable_pcompose_a005_lr1e4
+
+eat_signal:
+  output_path: /kaggle/working/reports/encoder_eat_comparable_pcompose_a005_lr1e4_r_h.csv

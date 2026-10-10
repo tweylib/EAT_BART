@@ -6,6 +6,7 @@ from transformers.models.bart.modeling_bart import BartAttention
 
 from eat_bart.modeling.eat_attention import EATAttentionConfig
 from eat_bart.modeling.eat_bart_attention import EATBartAttention
+from eat_bart.modeling.eat_bart_forward import enable_eat_forwarding
 
 
 def patch_bart_self_attention(
@@ -15,6 +16,7 @@ def patch_bart_self_attention(
     modify_decoder_self_attention: bool = True,
 ) -> object:
     """Patch encoder and decoder self-attention while leaving cross-attention unchanged."""
+    enable_eat_forwarding(model)
     bart_model = getattr(model, "model", model)
     encoder = getattr(bart_model, "encoder")
     decoder = getattr(bart_model, "decoder")

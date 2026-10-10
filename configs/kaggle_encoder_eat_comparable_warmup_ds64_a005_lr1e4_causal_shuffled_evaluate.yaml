@@ -1,0 +1,13 @@
+inherits: configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_evaluate.yaml
+
+# Evaluation-only causal ablation. The trained checkpoint is unchanged; only
+# the token-to-emotion correspondence is deterministically permuted.
+data:
+  contextual_emotion_cache:
+    path: /kaggle/input/datasets/cheikhmohamedahid/a005-test/cache/goemotions_baseline_raw_aligned_fp16_v3.pt
+
+evaluation:
+  checkpoint_path: /kaggle/input/datasets/cheikhmohamedahid/a005-test/models/encoder_eat_comparable_warmup_ds64_a005_lr1e4
+  output_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_causal_shuffled_generations.csv
+  emotion_feature_condition: shuffled
+  emotion_feature_shuffle_seed: 1729

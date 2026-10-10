@@ -33,6 +33,7 @@ def judge_generation_csv(
     continue_on_error: bool = False,
     max_output_tokens: int | None = None,
     response_format_json: bool = False,
+    reasoning_effort: str | None = None,
 ) -> dict[str, float]:
     """Judge generated responses with a configured LLM provider."""
     provider = provider.lower()
@@ -58,6 +59,7 @@ def judge_generation_csv(
                 rate_limit_sleep_seconds=rate_limit_sleep_seconds,
                 max_output_tokens=max_output_tokens,
                 response_format_json=response_format_json,
+                reasoning_effort=reasoning_effort,
             )
         except Exception as error:
             if not continue_on_error:
@@ -113,6 +115,7 @@ def _judge_row(
     rate_limit_sleep_seconds: float,
     max_output_tokens: int | None,
     response_format_json: bool,
+    reasoning_effort: str | None,
 ) -> dict[str, Any]:
     prompt = _build_judge_prompt(
         question=row.get(question_column, ""),
@@ -130,6 +133,7 @@ def _judge_row(
             rate_limit_sleep_seconds=rate_limit_sleep_seconds,
             max_output_tokens=max_output_tokens,
             response_format_json=response_format_json,
+            reasoning_effort=reasoning_effort,
         )
     else:
         raise ValueError("provider must be 'groq'.")
@@ -174,6 +178,7 @@ def _call_groq(
     rate_limit_sleep_seconds: float,
     max_output_tokens: int | None,
     response_format_json: bool,
+    reasoning_effort: str | None,
 ) -> str:
     try:
         from groq import Groq
@@ -195,6 +200,8 @@ def _call_groq(
                 create_kwargs["max_tokens"] = max_output_tokens
             if response_format_json:
                 create_kwargs["response_format"] = {"type": "json_object"}
+            if reasoning_effort is not None:
+                create_kwargs["reasoning_effort"] = reasoning_effort
 
             completion = client.chat.completions.create(
                 **create_kwargs,

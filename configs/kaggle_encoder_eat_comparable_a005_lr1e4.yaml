@@ -1,0 +1,12 @@
+inherits: configs/kaggle_encoder_eat_comparable_a010_lr1e4.yaml
+
+# Final controlled alpha experiment: only alpha and artifact paths differ from
+# the validated alpha=0.10, learning-rate=1e-4 run.
+model:
+  alpha: 0.05
+
+training:
+  output_dir: /kaggle/working/models/encoder_eat_comparable_a005_lr1e4
+
+eat_signal:
+  output_path: /kaggle/working/reports/encoder_eat_comparable_a005_lr1e4_r_h.csv

@@ -9,7 +9,15 @@ from typing import Literal
 import torch
 from torch import nn
 
-EATFormula = Literal["additive", "multiplicative"]
+EATFormula = Literal[
+    "additive",
+    "multiplicative",
+    "probability_mix",
+    "probability_compose",
+]
+EATWeightInitialization = Literal["independent_xavier", "tied_orthogonal"]
+
+PROBABILITY_FORMULAS = frozenset({"probability_mix", "probability_compose"})
 
 
 @dataclass(frozen=True)
@@ -21,6 +29,7 @@ class EATAttentionConfig:
     emotion_hidden_dim: int = 32
     alpha_init: float = 0.05
     formula: EATFormula = "additive"
+    weight_initialization: EATWeightInitialization = "independent_xavier"
 
 
 class EmotionInteraction(nn.Module):
@@ -28,8 +37,31 @@ class EmotionInteraction(nn.Module):
 
     def __init__(self, config: EATAttentionConfig) -> None:
         super().__init__()
-        if config.formula not in ("additive", "multiplicative"):
+        if config.formula not in (
+            "additive",
+            "multiplicative",
+            "probability_mix",
+            "probability_compose",
+        ):
             raise ValueError(f"Unsupported EAT attention formula: {config.formula}")
+        if not 0.0 <= config.alpha_init <= 1.0:
+            raise ValueError("alpha must be in [0, 1].")
+        if config.weight_initialization not in (
+            "independent_xavier",
+            "tied_orthogonal",
+        ):
+            raise ValueError(
+                "Unsupported EAT weight initialization: "
+                f"{config.weight_initialization}"
+            )
+        if (
+            config.weight_initialization == "tied_orthogonal"
+            and config.emotion_dim < config.emotion_hidden_dim
+        ):
+            raise ValueError(
+                "tied_orthogonal requires emotion_dim >= emotion_hidden_dim "
+                "so every projection has orthonormal columns."
+            )
 
         self.config = config
         self.w1_s = nn.Parameter(
@@ -38,13 +70,25 @@ class EmotionInteraction(nn.Module):
         self.w2_s = nn.Parameter(
             torch.empty(config.num_heads, config.emotion_dim, config.emotion_hidden_dim)
         )
-        self.alpha = nn.Parameter(torch.full((config.num_heads,), config.alpha_init))
+        if config.formula in PROBABILITY_FORMULAS:
+            self.register_buffer("alpha", torch.tensor(float(config.alpha_init)))
+        else:
+            self.alpha = nn.Parameter(torch.full((config.num_heads,), config.alpha_init))
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
         """Initialize W1_s, W2_s, and alpha."""
-        nn.init.xavier_uniform_(self.w1_s)
-        nn.init.xavier_uniform_(self.w2_s)
+        if self.config.weight_initialization == "tied_orthogonal":
+            # Each head receives its own random semi-orthogonal projection.
+            # W1/W2 start with equal values but remain distinct Parameters, so
+            # optimization can make the two projections diverge immediately.
+            for head in range(self.config.num_heads):
+                nn.init.orthogonal_(self.w1_s[head])
+            with torch.no_grad():
+                self.w2_s.copy_(self.w1_s)
+        else:
+            nn.init.xavier_uniform_(self.w1_s)
+            nn.init.xavier_uniform_(self.w2_s)
         with torch.no_grad():
             self.alpha.fill_(self.config.alpha_init)
 
@@ -62,6 +106,9 @@ class EmotionInteraction(nn.Module):
                 f"({self.config.emotion_dim})."
             )
 
+        # Cached contextual features may be float16 while frozen BART/EAT weights
+        # remain float32 (for example during CPU evaluation).
+        emotion_features = emotion_features.to(self.w1_s.dtype)
         # left shape: [batch_size, num_heads, seq_len, emotion_hidden_dim]
         left = torch.einsum("bse,hed->bhsd", emotion_features, self.w1_s)
         # right shape: [batch_size, num_heads, seq_len, emotion_hidden_dim]

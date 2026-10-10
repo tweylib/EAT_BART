@@ -1,0 +1,9 @@
+inherits: configs/kaggle_encoder_eat_comparable_evaluate.yaml
+
+# Evaluation-only ablation: load the trained EAT checkpoint but bypass its
+# probability-mixture branch so attention is exactly native frozen BART.
+model:
+  alpha: 0.0
+
+evaluation:
+  output_path: /kaggle/working/reports/encoder_eat_comparable_alpha0_generations.csv
