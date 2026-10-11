@@ -1,0 +1,5 @@
+inherits: configs/kaggle_decoder_eat_evaluate.yaml
+
+evaluation:
+  output_path: /kaggle/working/reports/decoder_eat_zero_generations.csv
+  emotion_feature_condition: zero

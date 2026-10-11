@@ -20,15 +20,6 @@ class _HeadAccumulator:
     valid_pair_count: int = 0
 
 
-def calculate_encoder_eat_signal(
-    model: torch.nn.Module,
-    dataloader: Iterable[dict[str, torch.Tensor]],
-    max_batches: int | None = None,
-) -> tuple[list[dict[str, Any]], dict[str, float]]:
-    """Calculate per-head encoder EAT modulation ratios."""
-    return calculate_eat_signal(model, dataloader, side="encoder", max_batches=max_batches)
-
-
 def calculate_decoder_eat_signal(
     model: torch.nn.Module,
     dataloader: Iterable[dict[str, torch.Tensor]],

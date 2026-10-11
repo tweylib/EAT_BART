@@ -1,0 +1,16 @@
+inherits: configs/kaggle_decoder_eat_smoke.yaml
+
+evaluation:
+  model_source: eat_checkpoint
+  checkpoint_path: /kaggle/working/models/decoder_eat_smoke
+  output_path: /kaggle/working/reports/decoder_eat_smoke_greedy_generations.csv
+  max_eval_examples: 8
+  batch_size: 1
+  max_new_tokens: 64
+  num_beams: 1
+  do_sample: false
+  repetition_penalty: 1.15
+  no_repeat_ngram_size: 3
+  length_penalty: 1.15
+  early_stopping: false
+  emotion_feature_condition: aligned

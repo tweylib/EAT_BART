@@ -1,0 +1,68 @@
+inherits: configs/kaggle.yaml
+
+# Canonical decoder-EAT comparison. This is intentionally self-contained with
+# respect to the former encoder experiment chain: only the generic Kaggle base
+# is inherited.
+comparison:
+  protocol_id: bart_eat_comparable_v1
+  expected_cuda_devices: 2
+  require_baseline_manifest: true
+
+model:
+  name: facebook/bart-base
+  local_files_only: false
+  baseline_checkpoint_path: /kaggle/input/datasets/cheikhtidjanitweylib/baseline-30-eps-new-model/models/bart_baseline_comparable
+  baseline_artifact_name: bart_baseline_comparable
+  add_prefix_space: false
+  freeze_bart: true
+  emotion_feature_source: goemotions_contextual
+  emotion_model_name: SamLowe/roberta-base-go_emotions
+  emotion_dim: 768
+  emotion_hidden_dim: 64
+  emotion_weight_initialization: tied_orthogonal
+  attention_formula: probability_mix
+  alpha_init: 0.05
+  alpha: 0.05
+  modify_encoder_self_attention: false
+  modify_decoder_self_attention: true
+  modify_cross_attention: false
+
+data:
+  max_source_length: 256
+  max_target_length: 512
+  max_examples:
+  contextual_emotion_cache:
+    enabled: true
+    path: /kaggle/working/cache/goemotions_decoder_causal_triangular_fp16_v1.pt
+    batch_size: 8
+
+training:
+  output_dir: /kaggle/working/models/decoder_eat
+  max_steps: -1
+  num_train_epochs: 40
+  save_model: true
+  learning_rate: 0.0001
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 4
+  dataloader_num_workers: 2
+  dataloader_pin_memory: true
+  eval_strategy: epoch
+  save_strategy: epoch
+  save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
+  early_stopping_patience:
+  early_stopping_threshold: 0.0
+  require_eat_weight_update: true
+  minimum_relative_eat_update: 0.0
+  alpha_warmup:
+    enabled: true
+    start_alpha: 0.005
+    warmup_epochs: 5
+
+eat_signal:
+  enabled: true
+  output_path: /kaggle/working/reports/decoder_eat_r_h.csv
+  max_batches: 50

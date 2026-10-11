@@ -16,7 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Aggregate multiple LLM judge summaries.")
     parser.add_argument(
         "--config",
-        default="configs/kaggle_encoder_only_judge_groq_aggregate.yaml",
+        default="configs/kaggle_decoder_eat_judge_aggregate.yaml",
         help="Path to YAML config file.",
     )
     return parser.parse_args()

@@ -1,0 +1,27 @@
+inherits: configs/kaggle_decoder_eat.yaml
+
+# Five optimizer steps over an isolated subset. The checkpoint is saved so the
+# decoder generation path can be checked immediately afterward.
+comparison:
+  require_baseline_manifest: false
+
+training:
+  output_dir: /kaggle/working/models/decoder_eat_smoke
+  max_steps: 5
+  num_train_epochs: 1
+  save_model: true
+  eval_strategy: "no"
+  save_strategy: "no"
+  load_best_model_at_end: false
+  metric_for_best_model:
+  greater_is_better:
+
+data:
+  max_examples: 64
+  contextual_emotion_cache:
+    enabled: true
+    path: /kaggle/working/cache/goemotions_decoder_causal_triangular_smoke_fp16_v1.pt
+    batch_size: 8
+
+eat_signal:
+  enabled: false

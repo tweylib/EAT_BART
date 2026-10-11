@@ -2,8 +2,8 @@ inherits: configs/default.yaml
 
 evaluation:
   model_source: eat_checkpoint
-  checkpoint_path: models/eat_bart
-  output_path: reports/eat_bart_generations.csv
+  checkpoint_path: models/decoder_eat
+  output_path: reports/decoder_eat_generations.csv
   max_eval_examples: 50
   batch_size: 4
   max_new_tokens: 128

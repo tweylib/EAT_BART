@@ -6,7 +6,7 @@ model:
   emotion_hidden_dim: 32
   alpha_init: 0.05
   attention_formula: additive
-  modify_encoder_self_attention: true
+  modify_encoder_self_attention: false
   modify_decoder_self_attention: true
   modify_cross_attention: false
 
@@ -23,7 +23,7 @@ data:
   max_examples:
 
 training:
-  output_dir: models/eat_bart
+  output_dir: models/decoder_eat
   per_device_train_batch_size: 4
   per_device_eval_batch_size: 4
   gradient_accumulation_steps: 4

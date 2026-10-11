@@ -1,0 +1,8 @@
+scoring:
+  input_path: /kaggle/working/reports/decoder_eat_shuffled_generations.csv
+  output_path: /kaggle/working/reports/decoder_eat_shuffled_metrics.csv
+  prediction_column: generated_response
+  reference_column: reference_response
+  include_bertscore: true
+  bertscore_model_type: roberta-large
+  bertscore_batch_size: 8

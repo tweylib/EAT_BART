@@ -1,9 +1,0 @@
-inherits: configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_pairwise_baseline.yaml
-
-pairwise_judge:
-  left_input_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_causal_shuffled_generations.csv
-  right_input_path: /kaggle/input/datasets/cheikhmohamedahid/a005-test/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_generations.csv
-  left_name: shuffled_eat
-  right_name: aligned_eat
-  output_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_pairwise_shuffled.csv
-  summary_output_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_pairwise_shuffled_summary.csv

@@ -1,9 +1,0 @@
-inherits: configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_evaluate.yaml
-
-# Exact native-BART control. The checkpoint W tensors still load, but alpha is
-# overridden after state-dict loading and the runtime emotion extractor is skipped.
-model:
-  alpha: 0.0
-
-evaluation:
-  output_path: /kaggle/working/reports/decoder_eat_comparable_warmup_ds64_a005_lr1e4_alpha0_generations.csv

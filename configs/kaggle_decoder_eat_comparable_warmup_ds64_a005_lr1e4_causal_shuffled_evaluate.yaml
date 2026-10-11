@@ -1,8 +1,0 @@
-inherits: configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_evaluate.yaml
-
-# Decoder shuffling is prefix-stable and causal: each content position receives
-# a deterministic feature from its strict history. It never uses a future token.
-evaluation:
-  output_path: /kaggle/working/reports/decoder_eat_comparable_warmup_ds64_a005_lr1e4_causal_shuffled_generations.csv
-  emotion_feature_condition: shuffled
-  emotion_feature_shuffle_seed: 1729

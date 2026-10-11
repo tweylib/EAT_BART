@@ -1,0 +1,9 @@
+inherits: configs/kaggle_decoder_eat_evaluate.yaml
+
+# Exact native-BART attention control. W tensors load from the EAT checkpoint,
+# but alpha is zero and the runtime emotion extractor is skipped.
+model:
+  alpha: 0.0
+
+evaluation:
+  output_path: /kaggle/working/reports/decoder_eat_alpha0_generations.csv

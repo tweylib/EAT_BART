@@ -1,5 +1,0 @@
-inherits: configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_judge_qwen.yaml
-
-# Judge the uploaded final EAT generations from a fresh Kaggle session.
-llm_judge:
-  input_path: /kaggle/input/datasets/cheikhmohamedahid/a005-test/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_generations.csv

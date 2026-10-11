@@ -1,8 +1,0 @@
-inherits: configs/kaggle.yaml
-
-model:
-  modify_encoder_self_attention: true
-  modify_decoder_self_attention: false
-
-training:
-  output_dir: /kaggle/working/models/eat_bart_encoder_only
