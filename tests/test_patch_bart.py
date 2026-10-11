@@ -9,6 +9,7 @@ from eat_bart.modeling.eat_bart_attention import EATBartAttention
 from eat_bart.modeling.eat_attention import EATAttentionConfig
 from eat_bart.modeling.eat_bart_model import (
     build_eat_bart_model_from_config,
+    load_eat_bart_checkpoint,
     _validate_checkpoint_load_result,
 )
 from eat_bart.modeling.patch_bart import patch_bart_self_attention
@@ -98,6 +99,39 @@ def test_probability_formulas_alpha_zero_match_unpatched_bart_logits_and_loss() 
             )
         assert torch.allclose(actual.logits, expected.logits, atol=1e-6, rtol=1e-6)
         assert torch.allclose(actual.loss, expected.loss, atol=1e-7, rtol=1e-7)
+
+
+def test_decoder_probability_mix_alpha_zero_matches_unpatched_bart() -> None:
+    torch.manual_seed(17)
+    config = BartConfig(
+        d_model=16, encoder_layers=1, decoder_layers=1,
+        encoder_attention_heads=2, decoder_attention_heads=2,
+        encoder_ffn_dim=32, decoder_ffn_dim=32, vocab_size=99,
+        pad_token_id=1, bos_token_id=0, eos_token_id=2,
+        decoder_start_token_id=2, dropout=0.0, attention_dropout=0.0,
+    )
+    baseline = BartForConditionalGeneration(config).eval()
+    decoder_eat = copy.deepcopy(baseline)
+    patch_bart_self_attention(
+        decoder_eat,
+        EATAttentionConfig(2, 8, 4, 0.0, "probability_mix"),
+        modify_encoder_self_attention=False,
+        modify_decoder_self_attention=True,
+    )
+    input_ids = torch.tensor([[0, 5, 6, 2]])
+    labels = torch.tensor([[7, 8, 2]])
+    decoder_emotion = torch.randn(1, 3, 8)
+
+    with torch.no_grad():
+        expected = baseline(input_ids=input_ids, labels=labels)
+        actual = decoder_eat(
+            input_ids=input_ids,
+            labels=labels,
+            decoder_emotion_features=decoder_emotion,
+        )
+
+    assert torch.equal(actual.logits, expected.logits)
+    assert torch.equal(actual.loss, expected.loss)
 
 
 def test_eat_wrapper_declares_that_it_does_not_handle_loss_kwargs() -> None:
@@ -287,6 +321,40 @@ def test_frozen_bart_backpropagates_to_probability_formula_weights() -> None:
         assert interaction.w2_s.grad.norm() > 0
 
 
+def test_decoder_probability_formula_weights_receive_gradients() -> None:
+    torch.manual_seed(23)
+    config = BartConfig(
+        d_model=16, encoder_layers=1, decoder_layers=1,
+        encoder_attention_heads=2, decoder_attention_heads=2,
+        encoder_ffn_dim=32, decoder_ffn_dim=32, vocab_size=99,
+        pad_token_id=1, bos_token_id=0, eos_token_id=2,
+        decoder_start_token_id=2, dropout=0.0, attention_dropout=0.0,
+    )
+    model = BartForConditionalGeneration(config)
+    patch_bart_self_attention(
+        model,
+        EATAttentionConfig(2, 8, 4, 0.1, "probability_mix"),
+        modify_encoder_self_attention=False,
+        modify_decoder_self_attention=True,
+    )
+    model.requires_grad_(False)
+    interaction = model.model.decoder.layers[0].self_attn.emotion_interaction
+    interaction.w1_s.requires_grad_(True)
+    interaction.w2_s.requires_grad_(True)
+
+    loss = model(
+        input_ids=torch.tensor([[0, 5, 6, 2]]),
+        labels=torch.tensor([[7, 8, 2]]),
+        decoder_emotion_features=torch.randn(1, 3, 8),
+    ).loss
+    loss.backward()
+
+    assert interaction.w1_s.grad is not None
+    assert interaction.w1_s.grad.norm() > 0
+    assert interaction.w2_s.grad is not None
+    assert interaction.w2_s.grad.norm() > 0
+
+
 def test_patched_bart_generate_accepts_precomputed_emotion_encoder_outputs() -> None:
     config = BartConfig(
         d_model=16,
@@ -323,6 +391,69 @@ def test_patched_bart_generate_accepts_precomputed_emotion_encoder_outputs() -> 
     )
 
     assert generated.size(0) == 1
+
+
+def test_decoder_eat_generation_recomputes_full_prefix_for_greedy_and_beams() -> None:
+    class PrefixExtractor:
+        def __init__(self):
+            self.calls = []
+
+        def __call__(self, decoder_input_ids):
+            self.calls.append(decoder_input_ids.detach().clone())
+            return decoder_input_ids.to(torch.float32).unsqueeze(-1).repeat(1, 1, 8)
+
+    config = BartConfig(
+        d_model=16, encoder_layers=1, decoder_layers=1,
+        encoder_attention_heads=2, decoder_attention_heads=2,
+        encoder_ffn_dim=32, decoder_ffn_dim=32, vocab_size=99,
+        pad_token_id=1, bos_token_id=0, eos_token_id=2,
+        decoder_start_token_id=2, forced_bos_token_id=0, forced_eos_token_id=2,
+        dropout=0.0, attention_dropout=0.0,
+    )
+    model = BartForConditionalGeneration(config)
+    patch_bart_self_attention(
+        model,
+        EATAttentionConfig(2, 8, 4, 0.1, "probability_mix"),
+        modify_encoder_self_attention=False,
+        modify_decoder_self_attention=True,
+    )
+    model.eval()
+    extractor = PrefixExtractor()
+    model.set_causal_decoder_emotion_extractor(extractor)
+    input_ids = torch.tensor([[0, 5, 6, 2]])
+
+    greedy = model.generate(input_ids=input_ids, max_new_tokens=4, num_beams=1)
+    beam = model.generate(input_ids=input_ids, max_new_tokens=4, num_beams=4)
+
+    assert greedy.size(0) == 1
+    assert beam.size(0) == 1
+    assert any(call.size(0) == 4 for call in extractor.calls)
+    assert max(call.size(1) for call in extractor.calls) > 1
+
+
+def test_checkpoint_config_can_override_saved_probability_alpha(tmp_path) -> None:
+    config = BartConfig(
+        d_model=16, encoder_layers=1, decoder_layers=1,
+        encoder_attention_heads=2, decoder_attention_heads=2,
+        encoder_ffn_dim=32, decoder_ffn_dim=32, vocab_size=99,
+    )
+    model = build_eat_bart_model_from_config(
+        config,
+        EATAttentionConfig(2, 8, 4, 0.05, "probability_mix"),
+        modify_encoder_self_attention=False,
+        modify_decoder_self_attention=True,
+    )
+    model.save_pretrained(tmp_path)
+
+    loaded = load_eat_bart_checkpoint(
+        tmp_path,
+        eat_config=EATAttentionConfig(2, 8, 4, 0.0, "probability_mix"),
+        modify_encoder_self_attention=False,
+        modify_decoder_self_attention=True,
+    )
+
+    alpha = loaded.model.decoder.layers[0].self_attn.emotion_interaction.alpha
+    assert alpha.item() == 0.0
 
 
 def test_build_eat_bart_model_from_config_patches_self_attention() -> None:

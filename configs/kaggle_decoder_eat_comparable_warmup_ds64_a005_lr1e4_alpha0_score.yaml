@@ -1,0 +1,7 @@
+inherits: configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_score.yaml
+
+scoring:
+  input_path: /kaggle/working/reports/decoder_eat_comparable_warmup_ds64_a005_lr1e4_alpha0_generations.csv
+  output_path: /kaggle/working/reports/decoder_eat_comparable_warmup_ds64_a005_lr1e4_alpha0_metrics.csv
+  # The saved trainer loss belongs to alpha=0.05 training, not this control.
+  validation_loss_path:

@@ -28,6 +28,8 @@ class EATBartDataCollator:
     emotion_feature_source: str = "lexicon"
     emotion_tokenizer: Any | None = None
     contextual_emotion_cache: dict[str, torch.Tensor] | None = None
+    modify_encoder_self_attention: bool = True
+    modify_decoder_self_attention: bool = False
 
     def __call__(self, examples: list[dict[str, str]]) -> dict[str, torch.Tensor]:
         """Return tensors for BART training.
@@ -42,8 +44,13 @@ class EATBartDataCollator:
 
         contextual_batch: dict[str, torch.Tensor] = {}
         target_emotion_features: torch.Tensor | None = None
+        decoder_contextual_cache: dict[str, torch.Tensor] | None = None
         if self.emotion_feature_source == "goemotions_contextual":
-            if self.contextual_emotion_cache is not None:
+            if self.modify_encoder_self_attention == self.modify_decoder_self_attention:
+                raise ValueError(
+                    "Contextual GoEmotions requires exactly one EAT self-attention placement."
+                )
+            if self.modify_encoder_self_attention and self.contextual_emotion_cache is not None:
                 source_encoded = self.tokenizer(
                     questions, max_length=self.max_source_length, padding=True,
                     truncation=True, return_tensors="pt",
@@ -60,22 +67,40 @@ class EATBartDataCollator:
                     rows.append(row)
                 encoder_emotion_features = None
                 contextual_batch = {"aligned_emotion_hidden_states": torch.stack(rows)}
-            elif self.emotion_tokenizer is None:
+            elif self.modify_encoder_self_attention and self.emotion_tokenizer is None:
                 raise ValueError("goemotions_contextual requires an emotion tokenizer.")
-            else:
-                source_encoded, emotion_encoded, alignment, diagnostics = tokenize_and_align_contextual_emotion(
-                questions, self.tokenizer, self.emotion_tokenizer, self.max_source_length
+            elif self.modify_encoder_self_attention:
+                (
+                    source_encoded,
+                    emotion_encoded,
+                    alignment,
+                    diagnostics,
+                ) = tokenize_and_align_contextual_emotion(
+                    questions,
+                    self.tokenizer,
+                    self.emotion_tokenizer,
+                    self.max_source_length,
                 )
                 if diagnostics.alignment_failures:
-                    raise ValueError(f"Failed to align {diagnostics.alignment_failures} valid BART tokens.")
+                    raise ValueError(
+                        f"Failed to align {diagnostics.alignment_failures} valid BART tokens."
+                    )
                 encoder_emotion_features = None
                 contextual_batch = {
                     "emotion_input_ids": emotion_encoded["input_ids"],
                     "emotion_attention_mask": emotion_encoded["attention_mask"],
                     "bart_to_emotion_alignment": alignment,
                 }
-            # The standard BART baseline tokenizes response labels directly.
-            # Decoder emotion features are unnecessary for encoder-only EAT.
+            else:
+                source_encoded = self.tokenizer(
+                    questions,
+                    max_length=self.max_source_length,
+                    padding=True,
+                    truncation=True,
+                    return_tensors="pt",
+                )
+                encoder_emotion_features = None
+                decoder_contextual_cache = self.contextual_emotion_cache
             target_encoded = self.tokenizer(
                 responses,
                 max_length=self.max_target_length,
@@ -126,6 +151,18 @@ class EATBartDataCollator:
                 decoder_input_ids=decoder_input_ids,
                 pad_token_id=pad_token_id,
             )
+        elif decoder_contextual_cache is not None:
+            seq_len = decoder_input_ids.size(1)
+            rows = []
+            for text_value in responses:
+                if text_value not in decoder_contextual_cache:
+                    raise KeyError("Response is missing from the causal decoder emotion cache.")
+                cached = decoder_contextual_cache[text_value]
+                row = torch.zeros(seq_len, cached.size(-1), dtype=cached.dtype)
+                copy_length = min(seq_len, cached.size(0))
+                row[:copy_length] = cached[:copy_length]
+                rows.append(row)
+            batch["decoder_emotion_features"] = torch.stack(rows)
         if encoder_emotion_features is not None:
             batch["encoder_emotion_features"] = encoder_emotion_features
         batch.update(contextual_batch)

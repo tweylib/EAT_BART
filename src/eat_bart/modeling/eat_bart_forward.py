@@ -38,6 +38,30 @@ class EATBartForConditionalGeneration(BartForConditionalGeneration):
     # keeps Trainer's gradient-accumulation normalization correct.
     accepts_loss_kwargs = False
 
+    def set_causal_decoder_emotion_extractor(self, extractor: Any) -> None:
+        """Attach a runtime-only feature extractor without adding checkpoint weights."""
+        self._causal_decoder_emotion_extractor = extractor
+
+    def prepare_inputs_for_generation(
+        self,
+        input_ids: torch.LongTensor,
+        *args: Any,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Recompute causal features from the beam-reordered full decoder prefix."""
+        extractor = getattr(self, "_causal_decoder_emotion_extractor", None)
+        decoder_emotion_features = None
+        if extractor is not None and _has_active_decoder_eat(self):
+            # input_ids shape: [batch_size * beams, accumulated_decoder_length]
+            decoder_emotion_features = extractor(input_ids)
+
+        model_inputs = super().prepare_inputs_for_generation(input_ids, *args, **kwargs)
+        if decoder_emotion_features is not None:
+            # Features intentionally retain the full key length even when the
+            # native generation helper slices decoder_input_ids to query length 1.
+            model_inputs["decoder_emotion_features"] = decoder_emotion_features
+        return model_inputs
+
     def forward(
         self,
         input_ids: torch.LongTensor | None = None,
@@ -76,6 +100,11 @@ class EATBartForConditionalGeneration(BartForConditionalGeneration):
                 contextual = outputs.hidden_states[-1]
                 aligned = align_hidden_states(contextual, bart_to_emotion_alignment)
             encoder_emotion_features = aligned
+
+        if decoder_emotion_features is None and decoder_input_ids is not None:
+            extractor = getattr(self, "_causal_decoder_emotion_extractor", None)
+            if extractor is not None and _has_active_decoder_eat(self):
+                decoder_emotion_features = extractor(decoder_input_ids)
 
         with _route_emotion_features(
             self,
@@ -159,3 +188,21 @@ def _route_emotion_features(
                 attention._eat_emotion_features = previous_value
             else:
                 del attention._eat_emotion_features
+
+
+def _has_active_decoder_eat(model: torch.nn.Module) -> bool:
+    """Return whether any decoder EAT module has a nonzero active branch."""
+    bart_model = getattr(model, "model", model)
+    decoder = getattr(bart_model, "decoder", None)
+    if decoder is None:
+        return False
+    for layer in decoder.layers:
+        attention = layer.self_attn
+        if not isinstance(attention, EATBartAttention):
+            continue
+        interaction = attention.emotion_interaction
+        if interaction.config.formula not in {"probability_mix", "probability_compose"}:
+            return True
+        if bool(torch.any(interaction.alpha != 0.0)):
+            return True
+    return False

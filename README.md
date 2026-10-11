@@ -1,10 +1,12 @@
 # EAT-BART
 
-Encoder-side Emotion-Aware Transformer using `facebook/bart-base` for mental-health response generation.
+Emotion-Aware Transformer ablations using `facebook/bart-base` for mental-health
+response generation.
 
-This branch contains the encoder-only EAT ablation. NRC Emotion Intensity Lexicon
-features are injected into BART encoder self-attention. Decoder self-attention and
-cross-attention remain standard BART.
+The `ablation/decoder-eat` branch contains the decoder-self-attention placement
+ablation derived from the completed encoder experiment. Encoder self-attention
+and decoder cross-attention remain native BART. The strict comparison uses frozen
+GoEmotions RoBERTa states, frozen BART, and trainable decoder W1/W2 only.
 
 ## Project Shape
 
@@ -15,6 +17,47 @@ cross-attention remain standard BART.
 - `src/eat_bart/utils/`: config, seed, and device utilities.
 - `scripts/`: command-line entry points.
 - `tests/`: focused tests for shapes, masking, lexicon features, and BART patching.
+
+## Decoder placement ablation
+
+Decoder features use the same frozen
+`SamLowe/roberta-base-go_emotions` model as the encoder experiment, but RoBERTa
+self-attention receives a triangular mask. A decoder feature at position `t`
+therefore depends only on the response prefix through `t`. Training caches these
+causal states aligned to shifted BART decoder inputs. Free generation recomputes
+the same definition from the live prefix after beam expansion/reordering; it
+never reads the reference response.
+
+The final encoder protocol is inherited directly: the same fine-tuned BART
+checkpoint, split and seed, tokenization, source/target limits, batch sizes,
+probability mixture, tied-orthogonal initialization, `d_s=64`, W learning rate,
+and alpha warmup from `0.005` to `0.05` over five epochs.
+
+```bash
+python scripts/check_comparability.py --config configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4.yaml
+python scripts/train.py --config configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_smoke.yaml
+python scripts/train.py --config configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4.yaml
+python scripts/evaluate.py --config configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_evaluate.yaml
+python scripts/score_generations.py --config configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_score.yaml
+```
+
+The smoke run is isolated to 64 examples and five optimizer steps. It aborts if
+the aggregate decoder W1/W2 relative update is zero or non-finite.
+
+Run the native, causal-shuffled, and zero-feature controls against the same
+trained checkpoint:
+
+```bash
+python scripts/evaluate.py --config configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_alpha0_evaluate.yaml
+python scripts/score_generations.py --config configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_alpha0_score.yaml
+python scripts/evaluate.py --config configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_causal_shuffled_evaluate.yaml
+python scripts/evaluate.py --config configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_causal_zero_evaluate.yaml
+```
+
+The decoder `shuffled` condition is deliberately not a full-response
+permutation: each position receives a deterministic feature from its strict
+history. This keeps past assignments stable as prefixes grow and prevents future
+leakage during both greedy and beam generation.
 
 ## Current Kaggle Protocol
 

@@ -1,0 +1,5 @@
+inherits: configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_causal_shuffled_score.yaml
+
+scoring:
+  input_path: /kaggle/working/reports/decoder_eat_comparable_warmup_ds64_a005_lr1e4_causal_zero_generations.csv
+  output_path: /kaggle/working/reports/decoder_eat_comparable_warmup_ds64_a005_lr1e4_causal_zero_metrics.csv

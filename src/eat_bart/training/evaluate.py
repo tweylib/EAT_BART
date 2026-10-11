@@ -7,8 +7,15 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from transformers import BartForConditionalGeneration
+from transformers import (
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    BartForConditionalGeneration,
+)
 
+from eat_bart.data.causal_decoder_emotion import (
+    CausalDecoderEmotionFeatureExtractor,
+)
 from eat_bart.data.dataset import MentalHealthResponseDataset, split_dataset
 from eat_bart.data.contextual_emotion import (
     contextual_cache_fingerprint,
@@ -42,6 +49,12 @@ def run_generation(config: dict[str, Any]) -> Path:
 
     dataset_path = _require_file(data_config["dataset_path"], "dataset CSV")
     feature_source = model_config.get("emotion_feature_source", "lexicon")
+    modify_encoder = bool(model_config.get("modify_encoder_self_attention", True))
+    modify_decoder = bool(model_config.get("modify_decoder_self_attention", True))
+    if feature_source == "goemotions_contextual" and modify_encoder == modify_decoder:
+        raise ValueError(
+            "Contextual GoEmotions evaluation requires exactly one EAT placement."
+        )
     model_source = evaluation_config.get("model_source", "eat_checkpoint")
     checkpoint_path = None
     if model_source == "eat_checkpoint":
@@ -74,20 +87,39 @@ def run_generation(config: dict[str, Any]) -> Path:
 
     lexicon = {}
     contextual_cache = None
+    emotion_tokenizer = None
+    emotion_model = None
     if feature_source == "lexicon":
         lexicon_path = _require_file(data_config["nrc_lexicon_path"], "NRC lexicon CSV")
         lexicon = load_nrc_lexicon(lexicon_path)
     elif feature_source == "goemotions_contextual":
-        cache_config = data_config.get("contextual_emotion_cache", {})
-        cache_path = _require_file(cache_config["path"], "contextual emotion cache")
-        all_questions = [example.question for example in dataset.examples]
-        fingerprint = contextual_cache_fingerprint(
-            all_questions,
-            model_config.get("emotion_model_name", "SamLowe/roberta-base-go_emotions"),
-            int(data_config.get("max_source_length", 256)),
-            bool(getattr(tokenizer, "add_prefix_space", False)),
-        )
-        contextual_cache = load_contextual_cache(cache_path, fingerprint)
+        if modify_encoder:
+            cache_config = data_config.get("contextual_emotion_cache", {})
+            cache_path = _require_file(cache_config["path"], "contextual emotion cache")
+            all_questions = [example.question for example in dataset.examples]
+            fingerprint = contextual_cache_fingerprint(
+                all_questions,
+                model_config.get(
+                    "emotion_model_name", "SamLowe/roberta-base-go_emotions"
+                ),
+                int(data_config.get("max_source_length", 256)),
+                bool(getattr(tokenizer, "add_prefix_space", False)),
+            )
+            contextual_cache = load_contextual_cache(cache_path, fingerprint)
+        elif model_source == "eat_checkpoint":
+            emotion_model_name = model_config.get(
+                "emotion_model_name", "SamLowe/roberta-base-go_emotions"
+            )
+            emotion_tokenizer = AutoTokenizer.from_pretrained(
+                emotion_model_name,
+                local_files_only=local_files_only,
+                use_fast=True,
+                add_prefix_space=bool(model_config.get("add_prefix_space", True)),
+            )
+            emotion_model = AutoModelForSequenceClassification.from_pretrained(
+                emotion_model_name,
+                local_files_only=local_files_only,
+            )
     else:
         raise ValueError(f"Unsupported emotion_feature_source: {feature_source}")
     eat_config = EATAttentionConfig(
@@ -113,7 +145,26 @@ def run_generation(config: dict[str, Any]) -> Path:
                 model_config.get("modify_decoder_self_attention", True)
             ),
         ).to(device)
-        use_emotion_encoder = bool(model_config.get("modify_encoder_self_attention", True))
+        use_emotion_encoder = modify_encoder
+        if modify_decoder:
+            if emotion_tokenizer is None or emotion_model is None:
+                raise ValueError(
+                    "Decoder EAT generation requires the causal GoEmotions extractor."
+                )
+            model.set_causal_decoder_emotion_extractor(
+                CausalDecoderEmotionFeatureExtractor(
+                    bart_tokenizer=tokenizer,
+                    emotion_tokenizer=emotion_tokenizer,
+                    emotion_model=emotion_model,
+                    max_length=int(data_config.get("max_target_length", 512)),
+                    condition=evaluation_config.get(
+                        "emotion_feature_condition", "aligned"
+                    ),
+                    shuffle_seed=int(
+                        evaluation_config.get("emotion_feature_shuffle_seed", 1729)
+                    ),
+                )
+            )
     elif model_source == "pretrained_bart":
         model = BartForConditionalGeneration.from_pretrained(
             model_name,
@@ -164,21 +215,26 @@ def _generate_rows(
         references = [example["response"] for example in batch_examples]
 
         if emotion_feature_source == "goemotions_contextual":
-            if contextual_cache is None:
-                raise ValueError("Contextual evaluation requires the aligned feature cache.")
             encoded = tokenizer(
                 questions,
                 max_length=int(data_config.get("max_source_length", 256)),
                 padding=True, truncation=True, return_tensors="pt",
             )
-            seq_len = encoded["input_ids"].size(1)
-            feature_rows = []
-            for question in questions:
-                cached = contextual_cache[question]
-                row = torch.zeros(seq_len, cached.size(-1), dtype=cached.dtype)
-                row[: min(seq_len, cached.size(0))] = cached[:seq_len]
-                feature_rows.append(row)
-            encoder_emotion_features = torch.stack(feature_rows)
+            if use_emotion_encoder:
+                if contextual_cache is None:
+                    raise ValueError(
+                        "Encoder contextual evaluation requires the aligned feature cache."
+                    )
+                seq_len = encoded["input_ids"].size(1)
+                feature_rows = []
+                for question in questions:
+                    cached = contextual_cache[question]
+                    row = torch.zeros(seq_len, cached.size(-1), dtype=cached.dtype)
+                    row[: min(seq_len, cached.size(0))] = cached[:seq_len]
+                    feature_rows.append(row)
+                encoder_emotion_features = torch.stack(feature_rows)
+            else:
+                encoder_emotion_features = None
         else:
             encoded, encoder_emotion_features = tokenize_texts_with_emotion_features(
                 texts=questions, tokenizer=tokenizer, lexicon=lexicon,
@@ -186,15 +242,17 @@ def _generate_rows(
                 padding=True, truncation=True,
                 strategy=data_config.get("subword_strategy", "single"),
             )
-        encoder_emotion_features = apply_emotion_feature_condition(
-            encoder_emotion_features,
-            encoded["attention_mask"],
-            evaluation_config.get("emotion_feature_condition", "aligned"),
-            seed=int(evaluation_config.get("emotion_feature_shuffle_seed", 1729)),
-            example_offset=start_index,
-        )
+        if encoder_emotion_features is not None:
+            encoder_emotion_features = apply_emotion_feature_condition(
+                encoder_emotion_features,
+                encoded["attention_mask"],
+                evaluation_config.get("emotion_feature_condition", "aligned"),
+                seed=int(evaluation_config.get("emotion_feature_shuffle_seed", 1729)),
+                example_offset=start_index,
+            )
         encoded = {key: value.to(device) for key, value in encoded.items()}
-        encoder_emotion_features = encoder_emotion_features.to(device)
+        if encoder_emotion_features is not None:
+            encoder_emotion_features = encoder_emotion_features.to(device)
 
         with torch.no_grad():
             generation_kwargs = _build_generation_kwargs(evaluation_config)

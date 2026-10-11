@@ -15,12 +15,17 @@ from transformers import (
     TrainerCallback,
 )
 
+from eat_bart.data.causal_decoder_emotion import (
+    CausalDecoderEmotionFeatureExtractor,
+    load_or_build_causal_decoder_cache,
+)
 from eat_bart.data.collator import EATBartDataCollator
 from eat_bart.data.contextual_emotion import load_or_build_contextual_cache
 from eat_bart.data.dataset import MentalHealthResponseDataset, split_dataset
 from eat_bart.data.emotion_lexicon import load_nrc_lexicon
 from eat_bart.data.tokenizer import load_bart_tokenizer
 from eat_bart.modeling.eat_attention import PROBABILITY_FORMULAS, EATAttentionConfig
+from eat_bart.modeling.eat_bart_attention import EATBartAttention
 from eat_bart.modeling.eat_bart_model import (
     DEFAULT_MODEL_NAME,
     load_eat_bart_from_baseline_checkpoint,
@@ -33,7 +38,7 @@ from eat_bart.training.comparability import (
     validate_runtime,
     write_run_manifest,
 )
-from eat_bart.training.eat_signal import calculate_encoder_eat_signal, write_eat_signal_csv
+from eat_bart.training.eat_signal import calculate_eat_signal, write_eat_signal_csv
 from eat_bart.training.optimizer import DifferentialLearningRateTrainer
 from eat_bart.utils.config import load_yaml_config
 from eat_bart.utils.seed import set_seed
@@ -47,10 +52,23 @@ def train(config_path: str | Path = "configs/default.yaml") -> None:
         config=config,
         dataset_path=config["data"]["dataset_path"],
         output_dir=trainer.args.output_dir,
-        stage="encoder_eat",
+        stage=_eat_stage(config["model"]),
     )
     print(f"Run manifest: {manifest_path}")
+    require_eat_update = bool(
+        config["training"].get("require_eat_weight_update", False)
+    )
+    initial_eat_weights = snapshot_eat_weights(trainer.model) if require_eat_update else {}
     trainer.train()
+    if require_eat_update:
+        relative_update = validate_eat_weight_update(
+            trainer.model,
+            initial_eat_weights,
+            minimum_relative_update=float(
+                config["training"].get("minimum_relative_eat_update", 0.0)
+            ),
+        )
+        print(f"EAT W1/W2 relative update: {relative_update:.8f}")
     if bool(config["training"].get("save_model", True)):
         trainer.save_model()
     _run_eat_signal_diagnostic(trainer, config.get("eat_signal"))
@@ -67,6 +85,14 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
 
     dataset_path = _require_file(data_config["dataset_path"], "dataset CSV")
     feature_source = model_config.get("emotion_feature_source", "lexicon")
+    modify_encoder = bool(model_config.get("modify_encoder_self_attention", True))
+    modify_decoder = bool(model_config.get("modify_decoder_self_attention", True))
+    if bool(model_config.get("modify_cross_attention", False)):
+        raise ValueError("EAT cross-attention is not supported by this project.")
+    if feature_source == "goemotions_contextual" and modify_encoder == modify_decoder:
+        raise ValueError(
+            "Contextual GoEmotions experiments require exactly one self-attention placement."
+        )
 
     dataset = MentalHealthResponseDataset.from_csv(
         path=dataset_path,
@@ -121,14 +147,19 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
     )
     if baseline_checkpoint_path:
         model = load_eat_bart_from_baseline_checkpoint(
-            baseline_checkpoint_path, eat_config=eat_config, local_files_only=True
+            baseline_checkpoint_path,
+            eat_config=eat_config,
+            local_files_only=True,
+            modify_encoder_self_attention=modify_encoder,
+            modify_decoder_self_attention=modify_decoder,
         )
     else:
         model = load_eat_bart_model(
             model_name=model_name, eat_config=eat_config, local_files_only=local_files_only,
-            modify_encoder_self_attention=bool(model_config.get("modify_encoder_self_attention", True)),
-            modify_decoder_self_attention=bool(model_config.get("modify_decoder_self_attention", True)),
+            modify_encoder_self_attention=modify_encoder,
+            modify_decoder_self_attention=modify_decoder,
         )
+    validate_eat_placement(model, modify_encoder=modify_encoder, modify_decoder=modify_decoder)
 
     emotion_tokenizer = None
     contextual_cache = None
@@ -152,19 +183,55 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
             )
         cache_config = data_config.get("contextual_emotion_cache", {})
         if bool(cache_config.get("enabled", False)):
-            all_questions = [example.question for example in dataset.examples]
             cache_device = "cuda" if torch.cuda.is_available() else "cpu"
-            contextual_cache = load_or_build_contextual_cache(
-                texts=all_questions, bart_tokenizer=tokenizer,
-                emotion_tokenizer=emotion_tokenizer, emotion_model=emotion_model,
-                model_name=emotion_model_name, cache_path=cache_config["path"],
-                max_length=int(data_config.get("max_source_length", 256)),
-                batch_size=int(cache_config.get("batch_size", 32)),
-                dtype=torch.float16, device=cache_device,
-            )
+            if modify_encoder:
+                all_questions = [example.question for example in dataset.examples]
+                contextual_cache = load_or_build_contextual_cache(
+                    texts=all_questions,
+                    bart_tokenizer=tokenizer,
+                    emotion_tokenizer=emotion_tokenizer,
+                    emotion_model=emotion_model,
+                    model_name=emotion_model_name,
+                    cache_path=cache_config["path"],
+                    max_length=int(data_config.get("max_source_length", 256)),
+                    batch_size=int(cache_config.get("batch_size", 32)),
+                    dtype=torch.float16,
+                    device=cache_device,
+                )
+            else:
+                pad_token_id = tokenizer.pad_token_id
+                decoder_start_token_id = model.config.decoder_start_token_id
+                if pad_token_id is None or decoder_start_token_id is None:
+                    raise ValueError(
+                        "Causal decoder caching requires pad and decoder-start token IDs."
+                    )
+                all_responses = [example.response for example in dataset.examples]
+                contextual_cache = load_or_build_causal_decoder_cache(
+                    texts=all_responses,
+                    bart_tokenizer=tokenizer,
+                    emotion_tokenizer=emotion_tokenizer,
+                    emotion_model=emotion_model,
+                    model_name=emotion_model_name,
+                    cache_path=cache_config["path"],
+                    max_length=int(data_config.get("max_target_length", 512)),
+                    decoder_start_token_id=int(decoder_start_token_id),
+                    pad_token_id=int(pad_token_id),
+                    batch_size=int(cache_config.get("batch_size", 8)),
+                    dtype=torch.float16,
+                    device=cache_device,
+                )
             del emotion_model
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+        elif modify_decoder:
+            model.set_causal_decoder_emotion_extractor(
+                CausalDecoderEmotionFeatureExtractor(
+                    bart_tokenizer=tokenizer,
+                    emotion_tokenizer=emotion_tokenizer,
+                    emotion_model=emotion_model,
+                    max_length=int(data_config.get("max_target_length", 512)),
+                )
+            )
         else:
             model.contextual_emotion_encoder = emotion_model
         if bool(model_config.get("freeze_bart", False)):
@@ -180,6 +247,8 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
         emotion_feature_source=feature_source,
         emotion_tokenizer=emotion_tokenizer,
         contextual_emotion_cache=contextual_cache,
+        modify_encoder_self_attention=modify_encoder,
+        modify_decoder_self_attention=modify_decoder,
     )
 
     training_arguments = build_training_arguments(training_config)
@@ -214,15 +283,99 @@ def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
 
 
 def freeze_bart_for_eat_only_training(model: torch.nn.Module) -> None:
-    """Freeze BART and leave only encoder EAT W1 and W2 trainable."""
+    """Freeze the model and leave only patched EAT W1 and W2 trainable."""
     model.requires_grad_(False)
-    bart_model = getattr(model, "model", model)
-    for layer in bart_model.encoder.layers:
-        interaction = getattr(layer.self_attn, "emotion_interaction", None)
-        if interaction is None:
-            raise ValueError("Every patched encoder layer must contain emotion_interaction.")
+    count = 0
+    for module in model.modules():
+        if not isinstance(module, EATBartAttention):
+            continue
+        interaction = module.emotion_interaction
         interaction.w1_s.requires_grad_(True)
         interaction.w2_s.requires_grad_(True)
+        count += 1
+    if count == 0:
+        raise ValueError("EAT-only freezing found no patched self-attention modules.")
+
+
+def snapshot_eat_weights(model: torch.nn.Module) -> dict[str, torch.Tensor]:
+    """Copy all trainable EAT W tensors for a post-training update check."""
+    weights = {
+        name: parameter.detach().cpu().clone()
+        for name, parameter in model.named_parameters()
+        if name.endswith(("emotion_interaction.w1_s", "emotion_interaction.w2_s"))
+    }
+    if not weights:
+        raise ValueError("No EAT W1/W2 parameters were found for update verification.")
+    return weights
+
+
+def validate_eat_weight_update(
+    model: torch.nn.Module,
+    initial_weights: dict[str, torch.Tensor],
+    *,
+    minimum_relative_update: float = 0.0,
+) -> float:
+    """Require a finite, nontrivial aggregate W1/W2 update after training."""
+    if minimum_relative_update < 0.0:
+        raise ValueError("minimum_relative_update cannot be negative.")
+    current = dict(model.named_parameters())
+    squared_change = 0.0
+    squared_initial = 0.0
+    for name, initial in initial_weights.items():
+        if name not in current:
+            raise ValueError(f"EAT update verification lost parameter: {name}")
+        value = current[name].detach().cpu().to(torch.float64)
+        initial64 = initial.to(torch.float64)
+        squared_change += float((value - initial64).square().sum().item())
+        squared_initial += float(initial64.square().sum().item())
+    if squared_initial == 0.0:
+        raise ValueError("Cannot normalize EAT update because initial W norm is zero.")
+    relative_update = (squared_change / squared_initial) ** 0.5
+    if not torch.isfinite(torch.tensor(relative_update)):
+        raise ValueError("EAT W1/W2 relative update is not finite.")
+    if relative_update <= minimum_relative_update:
+        raise ValueError(
+            "EAT W1/W2 did not update beyond the required threshold: "
+            f"relative_update={relative_update:.8g}, "
+            f"minimum={minimum_relative_update:.8g}."
+        )
+    return relative_update
+
+
+def validate_eat_placement(
+    model: torch.nn.Module,
+    *,
+    modify_encoder: bool,
+    modify_decoder: bool,
+) -> None:
+    """Verify the exact requested self-attention placement and native cross-attention."""
+    bart_model = getattr(model, "model", model)
+    for side, layers, expected in (
+        ("encoder", bart_model.encoder.layers, modify_encoder),
+        ("decoder", bart_model.decoder.layers, modify_decoder),
+    ):
+        for layer_index, layer in enumerate(layers):
+            patched = isinstance(layer.self_attn, EATBartAttention)
+            if patched != expected:
+                raise ValueError(
+                    f"Unexpected EAT placement at {side} layer {layer_index}: "
+                    f"patched={patched}, expected={expected}."
+                )
+            if side == "decoder" and isinstance(layer.encoder_attn, EATBartAttention):
+                raise ValueError("Decoder cross-attention must remain native BART attention.")
+
+
+def _eat_stage(model_config: dict[str, Any]) -> str:
+    """Return a manifest stage that records the configured EAT placement."""
+    encoder = bool(model_config.get("modify_encoder_self_attention", True))
+    decoder = bool(model_config.get("modify_decoder_self_attention", True))
+    if encoder and not decoder:
+        return "encoder_eat"
+    if decoder and not encoder:
+        return "decoder_eat"
+    if encoder and decoder:
+        return "encoder_decoder_eat"
+    raise ValueError("At least one self-attention side must be modified for EAT training.")
 
 
 def build_training_arguments(training_config: dict[str, Any]) -> Seq2SeqTrainingArguments:
@@ -315,9 +468,17 @@ def _run_eat_signal_diagnostic(
     if not diagnostic_config or not bool(diagnostic_config.get("enabled", True)):
         return
 
-    rows, summary = calculate_encoder_eat_signal(
+    model_config = config["model"]
+    side = (
+        "decoder"
+        if bool(model_config.get("modify_decoder_self_attention", True))
+        and not bool(model_config.get("modify_encoder_self_attention", True))
+        else "encoder"
+    )
+    rows, summary = calculate_eat_signal(
         model=trainer.model,
         dataloader=trainer.get_eval_dataloader(),
+        side=side,
         max_batches=diagnostic_config.get("max_batches"),
     )
     output_path = write_eat_signal_csv(diagnostic_config["output_path"], rows)

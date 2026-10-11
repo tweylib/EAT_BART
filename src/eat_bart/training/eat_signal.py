@@ -25,7 +25,27 @@ def calculate_encoder_eat_signal(
     dataloader: Iterable[dict[str, torch.Tensor]],
     max_batches: int | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, float]]:
-    """Calculate per-head EAT modulation ratios on valid source-token pairs.
+    """Calculate per-head encoder EAT modulation ratios."""
+    return calculate_eat_signal(model, dataloader, side="encoder", max_batches=max_batches)
+
+
+def calculate_decoder_eat_signal(
+    model: torch.nn.Module,
+    dataloader: Iterable[dict[str, torch.Tensor]],
+    max_batches: int | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, float]]:
+    """Calculate per-head decoder EAT modulation ratios on causal token pairs."""
+    return calculate_eat_signal(model, dataloader, side="decoder", max_batches=max_batches)
+
+
+def calculate_eat_signal(
+    model: torch.nn.Module,
+    dataloader: Iterable[dict[str, torch.Tensor]],
+    *,
+    side: str,
+    max_batches: int | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, float]]:
+    """Calculate per-head EAT modulation ratios on valid attention pairs.
 
     r_h = mean(abs(alpha_h * S_h)) / mean(abs(A_h)), where A_h is the
     scaled query-key score before emotion modulation and masking.  For
@@ -34,15 +54,18 @@ def calculate_encoder_eat_signal(
     """
     if max_batches is not None and max_batches < 1:
         raise ValueError("max_batches must be at least 1 when provided.")
+    if side not in {"encoder", "decoder"}:
+        raise ValueError("side must be 'encoder' or 'decoder'.")
 
-    encoder = _get_encoder(model)
+    attention_stack = _get_attention_stack(model, side)
+    is_decoder = side == "decoder"
     attention_modules = {
         name: module
-        for name, module in encoder.named_modules()
-        if isinstance(module, EATBartAttention) and not module.is_decoder
+        for name, module in attention_stack.named_modules()
+        if isinstance(module, EATBartAttention) and module.is_decoder == is_decoder
     }
     if not attention_modules:
-        raise ValueError("No encoder EAT attention modules were found for r_h analysis.")
+        raise ValueError(f"No {side} EAT attention modules were found for r_h analysis.")
 
     accumulators = {
         name: _HeadAccumulator(
@@ -85,6 +108,14 @@ def calculate_encoder_eat_signal(
             valid_keys = current_attention_mask.to(
                 device=hidden_states.device, dtype=torch.bool
             )[:, None, None, :]
+            if is_decoder:
+                seq_len = current_attention_mask.size(1)
+                valid_keys = valid_keys & torch.ones(
+                    seq_len,
+                    seq_len,
+                    dtype=torch.bool,
+                    device=hidden_states.device,
+                ).tril().view(1, 1, seq_len, seq_len)
             minimum = torch.finfo(attention_scores.dtype).min
             standard_probabilities = torch.softmax(
                 attention_scores.masked_fill(~valid_keys, minimum), dim=-1
@@ -106,6 +137,12 @@ def calculate_encoder_eat_signal(
         # valid_pairs shape: [batch_size, 1, seq_len, seq_len]
         valid_tokens = current_attention_mask.to(device=hidden_states.device, dtype=torch.bool)
         valid_pairs = valid_tokens[:, None, :, None] & valid_tokens[:, None, None, :]
+        if is_decoder:
+            seq_len = valid_tokens.size(1)
+            causal = torch.ones(
+                seq_len, seq_len, dtype=torch.bool, device=hidden_states.device
+            ).tril()
+            valid_pairs = valid_pairs & causal.view(1, 1, seq_len, seq_len)
         valid_pairs_float = valid_pairs.to(dtype=attention_measure.dtype)
 
         accumulator = accumulators[name]
@@ -149,12 +186,19 @@ def calculate_encoder_eat_signal(
                 if max_batches is not None and batch_index >= max_batches:
                     break
 
-                current_attention_mask = batch["attention_mask"].to(device)
-                emotion_features = batch.get("encoder_emotion_features")
+                mask_key = "decoder_attention_mask" if is_decoder else "attention_mask"
+                current_attention_mask = batch[mask_key].to(device)
+                feature_keys = (
+                    ("decoder_emotion_features",)
+                    if is_decoder
+                    else ("encoder_emotion_features", "aligned_emotion_hidden_states")
+                )
+                emotion_features = next(
+                    (batch[key] for key in feature_keys if batch.get(key) is not None),
+                    None,
+                )
                 if emotion_features is None:
-                    emotion_features = batch.get("aligned_emotion_hidden_states")
-                if emotion_features is None:
-                    raise ValueError("Batch contains no encoder emotion representations.")
+                    raise ValueError(f"Batch contains no {side} emotion representations.")
                 emotion_features = emotion_features.to(device)
                 input_ids = batch["input_ids"].to(device)
 
@@ -166,11 +210,18 @@ def calculate_encoder_eat_signal(
                 num_batches += 1
                 num_examples += int(input_ids.size(0))
 
-                encoder(
-                    input_ids=input_ids,
-                    attention_mask=current_attention_mask,
-                    encoder_emotion_features=emotion_features,
-                )
+                if is_decoder:
+                    device_batch = {
+                        key: value.to(device) if isinstance(value, torch.Tensor) else value
+                        for key, value in batch.items()
+                    }
+                    model(**device_batch)
+                else:
+                    attention_stack(
+                        input_ids=input_ids,
+                        attention_mask=current_attention_mask,
+                        encoder_emotion_features=emotion_features,
+                    )
     finally:
         for handle in handles:
             handle.remove()
@@ -199,7 +250,7 @@ def calculate_encoder_eat_signal(
             ratio = mean_emotion / mean_attention if mean_attention else float("nan")
             rows.append(
                 {
-                    "side": "encoder",
+                    "side": side,
                     "layer": _layer_index(name),
                     "head": head,
                     "signal_space": (
@@ -266,17 +317,17 @@ def write_eat_signal_csv(path: str | Path, rows: list[dict[str, Any]]) -> Path:
     return output_path
 
 
-def _get_encoder(model: torch.nn.Module) -> torch.nn.Module:
+def _get_attention_stack(model: torch.nn.Module, side: str) -> torch.nn.Module:
     unwrapped = model.module if hasattr(model, "module") else model
     bart_model = getattr(unwrapped, "model", unwrapped)
-    encoder = getattr(bart_model, "encoder", None)
-    if encoder is None:
-        raise ValueError("Could not find a BART encoder for r_h analysis.")
-    return encoder
+    stack = getattr(bart_model, side, None)
+    if stack is None:
+        raise ValueError(f"Could not find a BART {side} for r_h analysis.")
+    return stack
 
 
 def _layer_index(module_name: str) -> int:
     parts = module_name.split(".")
     if "layers" not in parts:
-        raise ValueError(f"Could not determine encoder layer from module name: {module_name}")
+        raise ValueError(f"Could not determine EAT layer from module name: {module_name}")
     return int(parts[parts.index("layers") + 1])

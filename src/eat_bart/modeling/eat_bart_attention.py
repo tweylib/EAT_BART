@@ -6,7 +6,6 @@ from typing import Any
 
 import torch
 from torch import nn
-from transformers.cache_utils import EncoderDecoderCache
 from transformers.models.bart.modeling_bart import BartAttention
 
 from eat_bart.modeling.eat_attention import (
@@ -122,37 +121,39 @@ class EATBartAttention(BartAttention):
         # query_states shape: [batch_size, num_heads, tgt_len, head_dim]
         query_states = self.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
 
-        is_updated = False
         if past_key_values is not None:
-            if isinstance(past_key_values, EncoderDecoderCache):
-                is_updated = past_key_values.is_updated.get(self.layer_idx)
-                curr_past_key_values = past_key_values.self_attention_cache
-            else:
-                curr_past_key_values = past_key_values
+            curr_past_key_values = getattr(
+                past_key_values, "self_attention_cache", past_key_values
+            )
 
         current_states = hidden_states
-        if past_key_values is not None and is_updated:
-            key_states = curr_past_key_values.layers[self.layer_idx].keys
-            value_states = curr_past_key_values.layers[self.layer_idx].values
-        else:
-            key_states = self.k_proj(current_states)
-            value_states = self.v_proj(current_states)
-            kv_shape = (*current_states.shape[:-1], -1, self.head_dim)
-            # key_states shape: [batch_size, num_heads, src_len, head_dim]
-            key_states = key_states.view(kv_shape).transpose(1, 2)
-            # value_states shape: [batch_size, num_heads, src_len, head_dim]
-            value_states = value_states.view(kv_shape).transpose(1, 2)
+        key_states = self.k_proj(current_states)
+        value_states = self.v_proj(current_states)
+        kv_shape = (*current_states.shape[:-1], -1, self.head_dim)
+        # key_states shape before cache update: [batch_size, num_heads, tgt_len, head_dim]
+        key_states = key_states.view(kv_shape).transpose(1, 2)
+        # value_states shape before cache update: [batch_size, num_heads, tgt_len, head_dim]
+        value_states = value_states.view(kv_shape).transpose(1, 2)
 
-            if past_key_values is not None:
-                key_states, value_states = curr_past_key_values.update(
-                    key_states,
-                    value_states,
-                    self.layer_idx,
-                )
+        if past_key_values is not None:
+            key_states, value_states = curr_past_key_values.update(
+                key_states,
+                value_states,
+                self.layer_idx,
+            )
 
-        emotion_scores = None
+        tgt_len = query_states.size(-2)
+        src_len = key_states.size(-2)
+        if emotion_features.size(1) != src_len:
+            raise ValueError(
+                "Decoder emotion feature length must equal the accumulated self-attention "
+                f"key length ({src_len}), got {emotion_features.size(1)}."
+            )
+        # full_emotion_scores shape: [batch_size, num_heads, src_len, src_len]
+        full_emotion_scores = self.emotion_interaction(emotion_features)
+        # During cached decoding, queries are the final one or more prefix rows.
         # emotion_scores shape: [batch_size, num_heads, tgt_len, src_len]
-        emotion_scores = self.emotion_interaction(emotion_features)
+        emotion_scores = full_emotion_scores[:, :, src_len - tgt_len : src_len, :src_len]
 
         attn_output, attn_weights = eat_eager_attention_forward(
             module=self,

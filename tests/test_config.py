@@ -646,3 +646,124 @@ def test_warmup_pairwise_configs_keep_aligned_eat_on_the_right() -> None:
     assert shuffled["right_name"] == "aligned_eat"
     assert baseline["max_examples"] == 100
     assert shuffled["max_examples"] == 100
+
+
+def test_decoder_placement_ablation_preserves_final_encoder_protocol() -> None:
+    encoder = load_yaml_config(
+        "configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4.yaml"
+    )
+    decoder = load_yaml_config(
+        "configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4.yaml"
+    )
+
+    expected = deepcopy(encoder)
+    expected["model"]["modify_encoder_self_attention"] = False
+    expected["model"]["modify_decoder_self_attention"] = True
+    expected["model"]["modify_cross_attention"] = False
+    expected["training"]["output_dir"] = (
+        "/kaggle/working/models/decoder_eat_comparable_warmup_ds64_a005_lr1e4"
+    )
+    expected["training"]["require_eat_weight_update"] = True
+    expected["training"]["minimum_relative_eat_update"] = 0.0
+    expected["data"]["contextual_emotion_cache"] = {
+        "enabled": True,
+        "path": (
+            "/kaggle/working/cache/"
+            "goemotions_decoder_causal_triangular_fp16_v1.pt"
+        ),
+        "batch_size": 8,
+    }
+    expected["eat_signal"]["output_path"] = (
+        "/kaggle/working/reports/"
+        "decoder_eat_comparable_warmup_ds64_a005_lr1e4_r_h.csv"
+    )
+
+    assert decoder == expected
+    assert decoder["model"]["baseline_checkpoint_path"] == encoder["model"][
+        "baseline_checkpoint_path"
+    ]
+    assert decoder["model"]["emotion_model_name"] == encoder["model"][
+        "emotion_model_name"
+    ]
+    assert decoder["model"]["emotion_hidden_dim"] == 64
+    assert decoder["model"]["emotion_weight_initialization"] == "tied_orthogonal"
+    assert decoder["model"]["attention_formula"] == "probability_mix"
+    assert decoder["model"]["alpha"] == pytest.approx(0.05)
+    assert decoder["training"]["alpha_warmup"] == encoder["training"][
+        "alpha_warmup"
+    ]
+    assert decoder["training"]["early_stopping_patience"] is None
+
+    smoke = load_yaml_config(
+        "configs/"
+        "kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_smoke.yaml"
+    )
+    assert smoke["training"]["max_steps"] == 5
+    assert smoke["training"]["require_eat_weight_update"] is True
+    assert smoke["training"]["save_model"] is False
+    assert smoke["comparison"]["require_baseline_manifest"] is False
+    assert smoke["data"]["max_examples"] == 64
+    assert "smoke" in smoke["data"]["contextual_emotion_cache"]["path"]
+
+
+def test_decoder_evaluation_controls_are_causal_and_isolated() -> None:
+    aligned = load_yaml_config(
+        "configs/kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_evaluate.yaml"
+    )
+    alpha_zero = load_yaml_config(
+        "configs/"
+        "kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "alpha0_evaluate.yaml"
+    )
+    shuffled = load_yaml_config(
+        "configs/"
+        "kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "causal_shuffled_evaluate.yaml"
+    )
+    zero = load_yaml_config(
+        "configs/"
+        "kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "causal_zero_evaluate.yaml"
+    )
+    shuffled_score = load_yaml_config(
+        "configs/"
+        "kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "causal_shuffled_score.yaml"
+    )
+    alpha_zero_score = load_yaml_config(
+        "configs/"
+        "kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "alpha0_score.yaml"
+    )
+
+    assert aligned["evaluation"]["emotion_feature_condition"] == "aligned"
+    assert aligned["evaluation"]["num_beams"] == 4
+    assert alpha_zero["model"]["alpha"] == 0.0
+    assert shuffled["evaluation"]["emotion_feature_condition"] == "shuffled"
+    assert shuffled["evaluation"]["emotion_feature_shuffle_seed"] == 1729
+    assert zero["evaluation"]["emotion_feature_condition"] == "zero"
+    assert "validation_loss_path" not in shuffled_score["scoring"]
+    assert alpha_zero_score["scoring"]["validation_loss_path"] is None
+
+
+def test_decoder_judge_configs_use_decoder_generation_artifacts() -> None:
+    gpt_oss = load_yaml_config(
+        "configs/"
+        "kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "judge_gpt_oss.yaml"
+    )
+    qwen = load_yaml_config(
+        "configs/"
+        "kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "judge_qwen.yaml"
+    )
+    pairwise = load_yaml_config(
+        "configs/"
+        "kaggle_decoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "pairwise_shuffled.yaml"
+    )["pairwise_judge"]
+
+    assert "decoder_eat" in gpt_oss["llm_judge"]["input_path"]
+    assert qwen["llm_judge"]["model"] == "qwen/qwen3.8-27b"
+    assert pairwise["left_name"] == "causal_shuffled_decoder_eat"
+    assert pairwise["right_name"] == "aligned_decoder_eat"

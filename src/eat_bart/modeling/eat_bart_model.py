@@ -8,7 +8,11 @@ import torch
 from safetensors.torch import load_file as load_safetensors_file
 from transformers import BartConfig, BartForConditionalGeneration
 
-from eat_bart.modeling.eat_attention import EATAttentionConfig
+from eat_bart.modeling.eat_attention import (
+    PROBABILITY_FORMULAS,
+    EATAttentionConfig,
+    EmotionInteraction,
+)
 from eat_bart.modeling.patch_bart import patch_bart_self_attention
 
 DEFAULT_MODEL_NAME = "facebook/bart-base"
@@ -62,8 +66,10 @@ def load_eat_bart_from_baseline_checkpoint(
     checkpoint_path: str | Path,
     eat_config: EATAttentionConfig,
     local_files_only: bool = True,
+    modify_encoder_self_attention: bool = True,
+    modify_decoder_self_attention: bool = False,
 ) -> BartForConditionalGeneration:
-    """Load a standard fine-tuned BART checkpoint, then add encoder-only EAT weights."""
+    """Load a standard fine-tuned BART checkpoint, then add requested EAT weights."""
     checkpoint_dir = Path(checkpoint_path)
     if not checkpoint_dir.exists():
         raise FileNotFoundError(f"Missing baseline BART checkpoint: {checkpoint_dir}")
@@ -73,8 +79,8 @@ def load_eat_bart_from_baseline_checkpoint(
     return patch_bart_self_attention(
         model,
         eat_config=eat_config,
-        modify_encoder_self_attention=True,
-        modify_decoder_self_attention=False,
+        modify_encoder_self_attention=modify_encoder_self_attention,
+        modify_decoder_self_attention=modify_decoder_self_attention,
     )
 
 
@@ -97,6 +103,13 @@ def load_eat_bart_checkpoint(
     load_result = model.load_state_dict(state_dict, strict=False)
     _validate_checkpoint_load_result(load_result.missing_keys, load_result.unexpected_keys)
     model.tie_weights()
+    if eat_config is not None and eat_config.formula in PROBABILITY_FORMULAS:
+        # Alpha is a persistent checkpoint buffer. Evaluation configs such as
+        # alpha-zero must explicitly override the value saved during training.
+        with torch.no_grad():
+            for module in model.modules():
+                if isinstance(module, EmotionInteraction):
+                    module.alpha.fill_(eat_config.alpha_init)
     return model
 
 
