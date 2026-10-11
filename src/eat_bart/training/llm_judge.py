@@ -33,7 +33,9 @@ def judge_generation_csv(
     continue_on_error: bool = False,
     max_output_tokens: int | None = None,
     response_format_json: bool = False,
+    response_format_json_schema: bool = False,
     reasoning_effort: str | None = None,
+    reasoning_format: str | None = None,
 ) -> dict[str, float]:
     """Judge generated responses with a configured LLM provider."""
     provider = provider.lower()
@@ -59,7 +61,9 @@ def judge_generation_csv(
                 rate_limit_sleep_seconds=rate_limit_sleep_seconds,
                 max_output_tokens=max_output_tokens,
                 response_format_json=response_format_json,
+                response_format_json_schema=response_format_json_schema,
                 reasoning_effort=reasoning_effort,
+                reasoning_format=reasoning_format,
             )
         except Exception as error:
             if not continue_on_error:
@@ -115,7 +119,9 @@ def _judge_row(
     rate_limit_sleep_seconds: float,
     max_output_tokens: int | None,
     response_format_json: bool,
+    response_format_json_schema: bool,
     reasoning_effort: str | None,
+    reasoning_format: str | None,
 ) -> dict[str, Any]:
     prompt = _build_judge_prompt(
         question=row.get(question_column, ""),
@@ -133,7 +139,9 @@ def _judge_row(
             rate_limit_sleep_seconds=rate_limit_sleep_seconds,
             max_output_tokens=max_output_tokens,
             response_format_json=response_format_json,
+            response_format_json_schema=response_format_json_schema,
             reasoning_effort=reasoning_effort,
+            reasoning_format=reasoning_format,
         )
     else:
         raise ValueError("provider must be 'groq'.")
@@ -179,6 +187,8 @@ def _call_groq(
     max_output_tokens: int | None,
     response_format_json: bool,
     reasoning_effort: str | None,
+    response_format_json_schema: bool = False,
+    reasoning_format: str | None = None,
 ) -> str:
     try:
         from groq import Groq
@@ -189,6 +199,10 @@ def _call_groq(
         ) from error
 
     client = Groq(api_key=api_key, timeout=timeout_seconds)
+    if response_format_json and response_format_json_schema:
+        raise ValueError(
+            "response_format_json and response_format_json_schema are mutually exclusive."
+        )
     for attempt in range(max_retries + 1):
         try:
             create_kwargs: dict[str, Any] = {
@@ -198,15 +212,24 @@ def _call_groq(
             }
             if max_output_tokens is not None:
                 create_kwargs["max_tokens"] = max_output_tokens
-            if response_format_json:
+            if response_format_json_schema:
+                create_kwargs["response_format"] = _judge_json_schema_response_format()
+            elif response_format_json:
                 create_kwargs["response_format"] = {"type": "json_object"}
             if reasoning_effort is not None:
                 create_kwargs["reasoning_effort"] = reasoning_effort
+            if reasoning_format is not None:
+                create_kwargs["reasoning_format"] = reasoning_format
 
             completion = client.chat.completions.create(
                 **create_kwargs,
             )
-            return completion.choices[0].message.content or ""
+            content = completion.choices[0].message.content or ""
+            if reasoning_format == "hidden" and "<think" in content.lower():
+                raise RuntimeError(
+                    "Groq returned visible thinking despite reasoning_format='hidden'."
+                )
+            return content
         except Exception as error:
             status_code = getattr(error, "status_code", None)
             if status_code == 429 and attempt < max_retries:
@@ -219,6 +242,29 @@ def _call_groq(
                 continue
 
             raise RuntimeError(f"Groq judge request failed: {error}") from error
+
+
+def _judge_json_schema_response_format() -> dict[str, Any]:
+    """Return Groq's strict structured-output schema for pointwise judging."""
+    score_schema = {"type": "integer", "minimum": 1, "maximum": 5}
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "mental_health_response_scores",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "empathy": score_schema,
+                    "coherence": score_schema,
+                    "safety": score_schema,
+                    "rationale": {"type": "string"},
+                },
+                "required": ["empathy", "coherence", "safety", "rationale"],
+                "additionalProperties": False,
+            },
+        },
+    }
 
 
 def _parse_judge_response(raw_text: str) -> dict[str, Any]:

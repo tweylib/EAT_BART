@@ -1,0 +1,8 @@
+inherits: configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_judge_qwen_uploaded.yaml
+
+# One-request live verification before spending quota on the full 100 examples.
+llm_judge:
+  output_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_judge_qwen_smoke.csv
+  summary_output_path: /kaggle/working/reports/encoder_eat_comparable_warmup_ds64_a005_lr1e4_judge_qwen_smoke_summary.csv
+  max_examples: 1
+  continue_on_error: false

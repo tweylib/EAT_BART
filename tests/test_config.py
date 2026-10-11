@@ -139,10 +139,12 @@ def test_comparable_eat_protocol_is_explicit_and_self_checking() -> None:
     assert evaluation_config["evaluation"]["length_penalty"] == 1.15
     assert judge_config["llm_judge"]["model"] == "openai/gpt-oss-120b"
     assert judge_config["llm_judge"]["max_examples"] == 100
-    assert qwen_config["llm_judge"]["model"] == "qwen/qwen3.6-27b"
+    assert qwen_config["llm_judge"]["model"] == "qwen/qwen3.8-27b"
     assert qwen_config["llm_judge"]["max_examples"] == 100
     assert qwen_config["llm_judge"]["reasoning_effort"] == "none"
-    assert qwen_config["llm_judge"]["response_format_json"] is True
+    assert qwen_config["llm_judge"]["reasoning_format"] == "hidden"
+    assert qwen_config["llm_judge"]["response_format_json"] is False
+    assert qwen_config["llm_judge"]["response_format_json_schema"] is True
     assert aggregate_config["judge_aggregation"]["require_all_judges"] is True
     assert aggregate_config["judge_aggregation"]["min_judged_examples"] == 95
 
@@ -245,10 +247,12 @@ def test_comparable_low_lr_diagnostic_changes_only_intended_settings() -> None:
     assert qwen_config["llm_judge"]["input_path"] == evaluation_config["evaluation"][
         "output_path"
     ]
-    assert qwen_config["llm_judge"]["model"] == "qwen/qwen3.6-27b"
+    assert qwen_config["llm_judge"]["model"] == "qwen/qwen3.8-27b"
     assert qwen_config["llm_judge"]["max_examples"] == 100
     assert qwen_config["llm_judge"]["reasoning_effort"] == "none"
-    assert qwen_config["llm_judge"]["response_format_json"] is True
+    assert qwen_config["llm_judge"]["reasoning_format"] == "hidden"
+    assert qwen_config["llm_judge"]["response_format_json"] is False
+    assert qwen_config["llm_judge"]["response_format_json_schema"] is True
     assert aggregate_config["judge_aggregation"]["require_all_judges"] is True
     assert aggregate_config["judge_aggregation"]["min_judged_examples"] == 95
     assert aggregate_config["judge_aggregation"]["judges"][0][
@@ -334,10 +338,12 @@ def test_comparable_alpha_005_changes_only_alpha_and_artifact_paths() -> None:
     assert qwen_config["llm_judge"]["input_path"] == evaluation_config["evaluation"][
         "output_path"
     ]
-    assert qwen_config["llm_judge"]["model"] == "qwen/qwen3.6-27b"
+    assert qwen_config["llm_judge"]["model"] == "qwen/qwen3.8-27b"
     assert qwen_config["llm_judge"]["max_examples"] == 100
     assert qwen_config["llm_judge"]["reasoning_effort"] == "none"
-    assert qwen_config["llm_judge"]["response_format_json"] is True
+    assert qwen_config["llm_judge"]["reasoning_format"] == "hidden"
+    assert qwen_config["llm_judge"]["response_format_json"] is False
+    assert qwen_config["llm_judge"]["response_format_json_schema"] is True
     assert aggregate_config["judge_aggregation"]["require_all_judges"] is True
     assert aggregate_config["judge_aggregation"]["min_judged_examples"] == 95
     assert aggregate_config["judge_aggregation"]["judges"][0][
@@ -478,6 +484,16 @@ def test_warmup_ds64_experiment_has_nonzero_schedule_and_no_early_stopping() -> 
     qwen = load_yaml_config(
         "configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_judge_qwen.yaml"
     )
+    qwen_uploaded = load_yaml_config(
+        "configs/"
+        "kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "judge_qwen_uploaded.yaml"
+    )
+    qwen_smoke = load_yaml_config(
+        "configs/"
+        "kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_"
+        "judge_qwen_smoke.yaml"
+    )
     aggregate = load_yaml_config(
         "configs/kaggle_encoder_eat_comparable_warmup_ds64_a005_lr1e4_judge_aggregate.yaml"
     )
@@ -519,11 +535,25 @@ def test_warmup_ds64_experiment_has_nonzero_schedule_and_no_early_stopping() -> 
         "output_path"
     ]
     assert qwen["llm_judge"]["max_examples"] == 100
+    assert qwen["llm_judge"]["model"] == "qwen/qwen3.8-27b"
+    assert qwen["llm_judge"]["reasoning_effort"] == "none"
+    assert qwen["llm_judge"]["reasoning_format"] == "hidden"
+    assert qwen["llm_judge"]["response_format_json"] is False
+    assert qwen["llm_judge"]["response_format_json_schema"] is True
+    assert qwen_uploaded["llm_judge"]["input_path"].startswith("/kaggle/input/")
+    assert qwen_smoke["llm_judge"]["input_path"] == qwen_uploaded["llm_judge"][
+        "input_path"
+    ]
+    assert qwen_smoke["llm_judge"]["max_examples"] == 1
+    assert qwen_smoke["llm_judge"]["continue_on_error"] is False
     assert aggregate["judge_aggregation"]["judges"][0]["summary_path"] == (
         gpt_oss["llm_judge"]["summary_output_path"]
     )
     assert aggregate["judge_aggregation"]["judges"][1]["summary_path"] == (
         qwen["llm_judge"]["summary_output_path"]
+    )
+    assert aggregate["judge_aggregation"]["judges"][1]["name"] == (
+        "qwen/qwen3.8-27b"
     )
 
     callbacks = _build_callbacks(

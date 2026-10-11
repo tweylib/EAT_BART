@@ -45,7 +45,11 @@ def main() -> None:
         continue_on_error=bool(judge_config.get("continue_on_error", False)),
         max_output_tokens=judge_config.get("max_output_tokens"),
         response_format_json=bool(judge_config.get("response_format_json", False)),
+        response_format_json_schema=bool(
+            judge_config.get("response_format_json_schema", False)
+        ),
         reasoning_effort=judge_config.get("reasoning_effort"),
+        reasoning_format=judge_config.get("reasoning_format"),
     )
 
     for name, value in summary.items():
