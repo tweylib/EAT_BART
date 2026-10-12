@@ -7,6 +7,9 @@ comparison:
   protocol_id: bart_eat_comparable_v1
   expected_cuda_devices: 2
   require_baseline_manifest: true
+  # Kaggle updates its preinstalled PyTorch independently of this repository.
+  # The exact baseline/current versions remain recorded in run manifests.
+  allow_torch_version_drift: true
 
 model:
   name: facebook/bart-base

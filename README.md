@@ -38,6 +38,11 @@ Use a two-GPU accelerator because the comparison guard expects two CUDA
 devices. Internet must be enabled the first time unless the Hugging Face models
 are already available in the notebook cache.
 
+Kaggle may update its preinstalled PyTorch between the baseline and EAT runs.
+The decoder config permits that version drift with a visible warning while
+still requiring exact dataset, protocol, Transformers, Accelerate, and
+tokenizers matches. Both PyTorch versions remain recorded in the manifests.
+
 ```bash
 python scripts/check_comparability.py --config configs/kaggle_decoder_eat.yaml
 python scripts/train.py --config configs/kaggle_decoder_eat_smoke.yaml

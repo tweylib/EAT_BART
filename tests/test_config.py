@@ -19,11 +19,10 @@ def test_kaggle_config_inherits_decoder_defaults() -> None:
 def test_decoder_training_config_is_explicit_and_self_contained() -> None:
     config = load_yaml_config("configs/kaggle_decoder_eat.yaml")
 
-    assert config["comparison"] == {
-        "protocol_id": "bart_eat_comparable_v1",
-        "expected_cuda_devices": 2,
-        "require_baseline_manifest": True,
-    }
+    assert config["comparison"]["protocol_id"] == "bart_eat_comparable_v1"
+    assert config["comparison"]["expected_cuda_devices"] == 2
+    assert config["comparison"]["require_baseline_manifest"] is True
+    assert config["comparison"]["allow_torch_version_drift"] is True
     assert config["model"]["baseline_artifact_name"] == "bart_baseline_comparable"
     assert config["model"]["emotion_model_name"] == (
         "SamLowe/roberta-base-go_emotions"

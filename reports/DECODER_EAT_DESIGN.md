@@ -8,6 +8,11 @@ checkpoint, dataset split, seed, tokenization limits, effective batch size,
 frozen-backbone policy, probability-mixture attention, tied-orthogonal W
 initialization, hidden size, optimizer learning rate, and alpha schedule.
 
+Kaggle-controlled PyTorch version drift is allowed explicitly because the
+platform can update its preinstalled runtime between sessions. The validator
+warns and records both versions; it continues to reject mismatched datasets,
+protocol settings, Transformers, Accelerate, or tokenizers versions.
+
 Placement is explicit:
 
 - BART encoder self-attention: native.

@@ -55,6 +55,38 @@ def test_manifest_rejects_target_length_mismatch(tmp_path) -> None:
         validate_baseline_manifest(checkpoint_path, eat_config, dataset_path)
 
 
+def test_manifest_allows_explicit_torch_version_drift(tmp_path) -> None:
+    dataset_path = tmp_path / "dataset.csv"
+    dataset_path.write_text("question,response\nq,r\n", encoding="utf-8")
+    checkpoint_path = tmp_path / "bart_baseline_comparable"
+    manifest_path = write_run_manifest(
+        _config(), dataset_path, checkpoint_path, stage="baseline"
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["software"]["torch"] = "0.0.0+different"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    eat_config = _config()
+    eat_config["comparison"]["allow_torch_version_drift"] = True
+
+    with pytest.warns(RuntimeWarning, match="different PyTorch versions"):
+        validate_baseline_manifest(checkpoint_path, eat_config, dataset_path)
+
+
+def test_manifest_rejects_unapproved_torch_version_drift(tmp_path) -> None:
+    dataset_path = tmp_path / "dataset.csv"
+    dataset_path.write_text("question,response\nq,r\n", encoding="utf-8")
+    checkpoint_path = tmp_path / "bart_baseline_comparable"
+    manifest_path = write_run_manifest(
+        _config(), dataset_path, checkpoint_path, stage="baseline"
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["software"]["torch"] = "0.0.0+different"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="software.torch"):
+        validate_baseline_manifest(checkpoint_path, _config(), dataset_path)
+
+
 def test_auto_discovery_requires_exactly_one_named_checkpoint(tmp_path) -> None:
     checkpoint_path = tmp_path / "uploaded" / "bart_baseline_comparable"
     checkpoint_path.mkdir(parents=True)

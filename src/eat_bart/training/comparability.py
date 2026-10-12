@@ -6,6 +6,7 @@ import hashlib
 import importlib.metadata
 import json
 import platform
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -145,10 +146,25 @@ def validate_baseline_manifest(
         "accelerate": importlib.metadata.version("accelerate"),
         "tokenizers": importlib.metadata.version("tokenizers"),
     }
+    allow_torch_version_drift = bool(
+        eat_config.get("comparison", {}).get("allow_torch_version_drift", False)
+    )
     for package, current_version in current_software.items():
-        if baseline_software.get(package) != current_version:
+        baseline_version = baseline_software.get(package)
+        if baseline_version == current_version:
+            continue
+        if package == "torch" and allow_torch_version_drift:
+            warnings.warn(
+                "Baseline and EAT use different PyTorch versions: "
+                f"baseline={baseline_version!r}, EAT={current_version!r}. "
+                "Continuing because comparison.allow_torch_version_drift is enabled; "
+                "the difference remains recorded in both run manifests.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        else:
             mismatches.append(
-                f"software.{package}: baseline={baseline_software.get(package)!r}, "
+                f"software.{package}: baseline={baseline_version!r}, "
                 f"EAT={current_version!r}"
             )
     if mismatches:
