@@ -31,6 +31,9 @@ triangular self-attention mask. During teacher-forced training the resulting
 features are cached against shifted decoder inputs. During free generation they
 are recomputed from the live prefix. Beam-expanded and reordered prefixes are
 handled independently, so each candidate receives features for its own history.
+Because both tokenizers use RoBERTa byte-BPE tokens, live BART IDs are mapped by
+their exact token strings into the GoEmotions vocabulary; generated prefixes are
+never decoded and retokenized.
 
 ## Cache contract
 

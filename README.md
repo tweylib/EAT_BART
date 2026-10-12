@@ -15,8 +15,8 @@ only the response prefix through `t`.
 - The collator aligns those cached features to shifted BART decoder inputs.
 - Generation recomputes features from the current generated prefix after beam
   expansion or reordering. It never uses the reference response.
-- Every generated BART prefix must round-trip through canonical text exactly;
-  the run fails instead of guessing if alignment changes.
+- Every generated BART token maps by its exact byte-BPE token string into the
+  GoEmotions vocabulary. This avoids lossy decode-and-retokenize round trips.
 
 The canonical experiment config is `configs/kaggle_decoder_eat.yaml`. It keeps
 the comparison setup fixed: the same baseline checkpoint, split and seed,

@@ -9,12 +9,6 @@ from typing import Any, Sequence
 import torch
 from transformers.models.bart.modeling_bart import shift_tokens_right
 
-from eat_bart.data.contextual_emotion import (
-    AlignmentDiagnostics,
-    align_hidden_states,
-    tokenize_and_align_contextual_emotion,
-)
-
 
 def build_causal_attention_mask(attention_mask: torch.Tensor) -> torch.Tensor:
     """Return a RoBERTa-compatible causal key mask.
@@ -47,7 +41,7 @@ def causal_decoder_cache_fingerprint(
     digest.update(
         (
             f"{model_name}\0{max_length}\0{add_prefix_space}\0"
-            f"{decoder_start_token_id}\0causal_decoder_triangular_v1"
+            f"{decoder_start_token_id}\0causal_decoder_token_map_v2"
         ).encode()
     )
     for value in texts:
@@ -59,11 +53,11 @@ def causal_decoder_cache_fingerprint(
 class CausalDecoderEmotionFeatureExtractor:
     """Build decoder features using a frozen, causally masked GoEmotions encoder.
 
-    The input is the exact BART decoder prefix. It is decoded to canonical text,
-    retokenized by BART and RoBERTa, and checked for a lossless BART-token
-    round-trip before any feature is accepted. RoBERTa receives a triangular
-    mask, so the representation aligned to decoder position ``t`` cannot depend
-    on a token after ``t``.
+    BART and the GoEmotions RoBERTa use the same byte-BPE token strings. The
+    exact live BART prefix is mapped token-by-token into the emotion tokenizer's
+    vocabulary, avoiding the non-idempotent decode/retokenize cycle. RoBERTa
+    receives a triangular mask, so the representation aligned to decoder
+    position ``t`` cannot depend on a token after ``t``.
     """
 
     def __init__(
@@ -88,6 +82,10 @@ class CausalDecoderEmotionFeatureExtractor:
         self.max_length = int(max_length)
         self.condition = normalized_condition
         self.shuffle_seed = int(shuffle_seed)
+        self._emotion_id_by_bart_id = build_token_id_map(
+            bart_tokenizer,
+            emotion_tokenizer,
+        )
 
     def __call__(self, decoder_input_ids: torch.Tensor) -> torch.Tensor:
         """Return features aligned to exact decoder IDs.
@@ -107,98 +105,54 @@ class CausalDecoderEmotionFeatureExtractor:
         device = decoder_input_ids.device
         self.emotion_model.to(device)
         decoder_ids_cpu = decoder_input_ids.detach().cpu()
-        texts = self.bart_tokenizer.batch_decode(
-            decoder_ids_cpu,
-            skip_special_tokens=True,
-            clean_up_tokenization_spaces=False,
-        )
-        bart, emotion, alignment, diagnostics = tokenize_and_align_contextual_emotion(
-            texts,
-            self.bart_tokenizer,
-            self.emotion_tokenizer,
-            max_length=self.max_length,
-            padding=True,
-        )
-        if diagnostics.alignment_failures:
-            raise ValueError(
-                "Causal decoder features failed to align "
-                f"{diagnostics.alignment_failures} valid BART tokens."
-            )
-
-        causal_mask = build_causal_attention_mask(emotion["attention_mask"]).to(device)
-        emotion_inputs = {
-            key: value.to(device)
-            for key, value in emotion.items()
-            if key != "attention_mask"
-        }
+        emotion_input_ids = self._map_bart_ids_to_emotion_ids(decoder_ids_cpu).to(device)
+        pad_token_id = self.bart_tokenizer.pad_token_id
+        if pad_token_id is None:
+            raise ValueError("Causal decoder features require a BART pad token ID.")
+        attention_mask = decoder_ids_cpu.ne(int(pad_token_id)).to(torch.long)
+        causal_mask = build_causal_attention_mask(attention_mask).to(device)
         with torch.no_grad():
             hidden = self.emotion_model(
-                **emotion_inputs,
+                input_ids=emotion_input_ids,
                 attention_mask=causal_mask,
                 output_hidden_states=True,
                 return_dict=True,
             ).hidden_states[-1]
-            aligned = align_hidden_states(hidden, alignment.to(device))
 
-        features, content_positions = self._map_to_decoder_ids(
-            decoder_ids_cpu=decoder_ids_cpu,
-            retokenized_ids=bart["input_ids"],
-            retokenized_attention_mask=bart["attention_mask"],
-            aligned=aligned,
+        special_ids = torch.tensor(
+            list(self.bart_tokenizer.all_special_ids),
+            dtype=decoder_ids_cpu.dtype,
         )
+        is_special = torch.isin(decoder_ids_cpu, special_ids)
+        is_content = attention_mask.bool() & ~is_special
+        features = hidden.masked_fill(~is_content.to(device).unsqueeze(-1), 0.0)
+        content_positions = [
+            torch.nonzero(row, as_tuple=False).flatten() for row in is_content
+        ]
         return self._apply_condition(features, content_positions)
 
-    def _map_to_decoder_ids(
+    def _map_bart_ids_to_emotion_ids(
         self,
         decoder_ids_cpu: torch.Tensor,
-        retokenized_ids: torch.Tensor,
-        retokenized_attention_mask: torch.Tensor,
-        aligned: torch.Tensor,
-    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
-        """Map canonical-text features back to the exact generated token positions."""
-        special_ids = set(int(value) for value in self.bart_tokenizer.all_special_ids)
-        batch_size, decoder_len = decoder_ids_cpu.shape
-        emotion_dim = aligned.size(-1)
-        features = aligned.new_zeros(batch_size, decoder_len, emotion_dim)
-        all_content_positions: list[torch.Tensor] = []
-
-        for row in range(batch_size):
-            decoder_positions = torch.tensor(
-                [
-                    index
-                    for index, token_id in enumerate(decoder_ids_cpu[row].tolist())
-                    if int(token_id) not in special_ids
-                ],
-                dtype=torch.long,
+    ) -> torch.Tensor:
+        """Map exact BART IDs to equal token strings in the emotion vocabulary."""
+        if decoder_ids_cpu.numel() == 0:
+            return decoder_ids_cpu.clone()
+        minimum_id = int(decoder_ids_cpu.min().item())
+        maximum_id = int(decoder_ids_cpu.max().item())
+        if minimum_id < 0 or maximum_id >= self._emotion_id_by_bart_id.numel():
+            raise ValueError(
+                "Decoder prefix contains a token ID outside the BART vocabulary: "
+                f"min={minimum_id}, max={maximum_id}."
             )
-            target_positions = torch.tensor(
-                [
-                    index
-                    for index, (token_id, valid) in enumerate(
-                        zip(
-                            retokenized_ids[row].tolist(),
-                            retokenized_attention_mask[row].tolist(),
-                            strict=True,
-                        )
-                    )
-                    if valid and int(token_id) not in special_ids
-                ],
-                dtype=torch.long,
+        mapped = self._emotion_id_by_bart_id[decoder_ids_cpu]
+        if bool(torch.any(mapped < 0)):
+            missing_ids = torch.unique(decoder_ids_cpu[mapped < 0]).tolist()
+            raise ValueError(
+                "Decoder prefix contains BART tokens absent from the emotion "
+                f"tokenizer vocabulary: {missing_ids[:8]}."
             )
-            original_content = decoder_ids_cpu[row, decoder_positions]
-            retokenized_content = retokenized_ids[row, target_positions]
-            if not torch.equal(original_content, retokenized_content):
-                raise ValueError(
-                    "Generated BART prefix did not round-trip through canonical text; "
-                    "refusing to guess decoder emotion alignment."
-                )
-            if decoder_positions.numel():
-                features[row, decoder_positions.to(features.device)] = aligned[
-                    row, target_positions.to(aligned.device)
-                ]
-            all_content_positions.append(decoder_positions)
-
-        return features, all_content_positions
+        return mapped
 
     def _apply_condition(
         self,
@@ -292,7 +246,7 @@ def load_or_build_causal_decoder_cache(
             "model_name": model_name,
             "max_length": max_length,
             "dtype": str(dtype),
-            "causal_definition": "triangular_roberta_decoder_v1",
+            "causal_definition": "triangular_roberta_decoder_token_map_v2",
             "features": features,
         },
         path,
@@ -309,9 +263,38 @@ def load_causal_decoder_cache(
     payload = torch.load(path, map_location="cpu", weights_only=False)
     if payload.get("fingerprint") != expected_fingerprint:
         raise ValueError(f"Causal decoder emotion cache is stale or incompatible: {path}")
-    if payload.get("causal_definition") != "triangular_roberta_decoder_v1":
+    if payload.get("causal_definition") != "triangular_roberta_decoder_token_map_v2":
         raise ValueError(f"Causal decoder emotion cache has an unknown definition: {path}")
     return payload["features"]
+
+
+def build_token_id_map(
+    bart_tokenizer: Any,
+    emotion_tokenizer: Any,
+) -> torch.Tensor:
+    """Return a BART-ID to emotion-ID map based on exact token strings."""
+    bart_vocab = bart_tokenizer.get_vocab()
+    emotion_vocab = emotion_tokenizer.get_vocab()
+    if not bart_vocab:
+        raise ValueError("BART tokenizer vocabulary is empty.")
+
+    mapping = torch.full(
+        (max(int(value) for value in bart_vocab.values()) + 1,),
+        -1,
+        dtype=torch.long,
+    )
+    for token, bart_id in bart_vocab.items():
+        emotion_id = emotion_vocab.get(token)
+        if emotion_id is not None:
+            mapping[int(bart_id)] = int(emotion_id)
+
+    missing = int(torch.count_nonzero(mapping < 0).item())
+    if missing:
+        raise ValueError(
+            "BART and emotion tokenizers do not share a complete token vocabulary; "
+            f"{missing} BART token IDs cannot be mapped exactly."
+        )
+    return mapping
 
 
 def validate_causal_mask_prefix_invariance(

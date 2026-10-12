@@ -36,7 +36,7 @@ data:
   max_examples:
   contextual_emotion_cache:
     enabled: true
-    path: /kaggle/working/cache/goemotions_decoder_causal_triangular_fp16_v1.pt
+    path: /kaggle/working/cache/goemotions_decoder_causal_token_map_fp16_v2.pt
     batch_size: 8
 
 training:

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 import torch
 from transformers import RobertaConfig, RobertaForSequenceClassification
 
 from eat_bart.data.causal_decoder_emotion import (
     CausalDecoderEmotionFeatureExtractor,
     build_causal_attention_mask,
+    build_token_id_map,
     causal_decoder_cache_fingerprint,
     validate_causal_mask_prefix_invariance,
 )
@@ -19,6 +21,9 @@ class _CharacterTokenizer:
     eos_token_id = 2
     all_special_ids = [0, 1, 2]
     add_prefix_space = False
+
+    def get_vocab(self):
+        return {"<s>": 0, "<pad>": 1, "</s>": 2, "a": 3, "b": 4, "c": 5}
 
     def batch_decode(self, rows, **_):
         characters = {3: "a", 4: "b", 5: "c"}
@@ -108,7 +113,7 @@ def test_transformers_roberta_causal_mask_is_prefix_invariant() -> None:
     validate_causal_mask_prefix_invariance(full, prefix, prefix_length=3)
 
 
-def test_extractor_round_trips_decoder_ids_and_zeros_special_positions() -> None:
+def test_extractor_maps_exact_decoder_tokens_and_zeros_special_positions() -> None:
     tokenizer = _CharacterTokenizer()
     emotion_model = _RecordingEmotionModel()
     extractor = CausalDecoderEmotionFeatureExtractor(
@@ -125,6 +130,44 @@ def test_extractor_round_trips_decoder_ids_and_zeros_special_positions() -> None
     assert torch.equal(features[0, 2], torch.full((4,), 3.0))
     assert torch.equal(features[0, 3], torch.full((4,), 4.0))
     assert emotion_model.last_attention_mask.shape == (1, 1, 4, 4)
+
+
+def test_extractor_maps_by_token_string_without_decode_retokenize_round_trip() -> None:
+    class _NoDecodeBartTokenizer(_CharacterTokenizer):
+        def batch_decode(self, rows, **_):
+            raise AssertionError("Decoder feature extraction must not decode token IDs.")
+
+    class _RemappedEmotionTokenizer(_CharacterTokenizer):
+        def get_vocab(self):
+            return {
+                "<s>": 20,
+                "<pad>": 21,
+                "</s>": 22,
+                "a": 23,
+                "b": 24,
+                "c": 25,
+            }
+
+    extractor = CausalDecoderEmotionFeatureExtractor(
+        bart_tokenizer=_NoDecodeBartTokenizer(),
+        emotion_tokenizer=_RemappedEmotionTokenizer(),
+        emotion_model=_RecordingEmotionModel(),
+        max_length=8,
+    )
+
+    features = extractor(torch.tensor([[2, 0, 3, 4]]))
+
+    assert torch.equal(features[0, 2], torch.full((4,), 23.0))
+    assert torch.equal(features[0, 3], torch.full((4,), 24.0))
+
+
+def test_token_map_rejects_incomplete_emotion_vocabulary() -> None:
+    class _IncompleteTokenizer(_CharacterTokenizer):
+        def get_vocab(self):
+            return {"<s>": 0, "<pad>": 1, "</s>": 2, "a": 3, "b": 4}
+
+    with pytest.raises(ValueError, match="complete token vocabulary"):
+        build_token_id_map(_CharacterTokenizer(), _IncompleteTokenizer())
 
 
 def test_causal_shuffled_features_are_stable_when_prefix_grows() -> None:
