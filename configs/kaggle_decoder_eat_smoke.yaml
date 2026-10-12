@@ -15,6 +15,10 @@ training:
   load_best_model_at_end: false
   metric_for_best_model:
   greater_is_better:
+  # Compress the full five-epoch schedule into this one-epoch smoke run so the
+  # same callback is exercised without violating its epoch contract.
+  alpha_warmup:
+    warmup_epochs: 1
 
 data:
   max_examples: 64

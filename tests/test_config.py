@@ -65,8 +65,22 @@ def test_decoder_smoke_saves_checkpoint_and_checks_weight_update() -> None:
     assert config["training"]["require_eat_weight_update"] is True
     assert config["training"]["eval_strategy"] == "no"
     assert config["training"]["save_strategy"] == "no"
+    assert config["training"]["alpha_warmup"] == {
+        "enabled": True,
+        "start_alpha": 0.005,
+        "warmup_epochs": 1,
+    }
     assert config["data"]["max_examples"] == 64
     assert "smoke" in config["data"]["contextual_emotion_cache"]["path"]
+
+    callbacks = _build_callbacks(
+        config["training"],
+        alpha_target=config["model"]["alpha"],
+        attention_formula=config["model"]["attention_formula"],
+    )
+    assert len(callbacks) == 1
+    assert isinstance(callbacks[0], LinearAlphaWarmupCallback)
+    assert callbacks[0].warmup_epochs <= config["training"]["num_train_epochs"]
 
 
 def test_smoke_evaluations_cover_greedy_and_beam_generation() -> None:

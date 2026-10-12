@@ -71,7 +71,11 @@ def train(config_path: str | Path = "configs/default.yaml") -> None:
         print(f"EAT W1/W2 relative update: {relative_update:.8f}")
     if bool(config["training"].get("save_model", True)):
         trainer.save_model()
-    _run_eat_signal_diagnostic(trainer, config.get("eat_signal"))
+    _run_eat_signal_diagnostic(
+        trainer,
+        config.get("eat_signal"),
+        config["model"],
+    )
 
 
 def build_trainer(config: dict[str, Any]) -> Seq2SeqTrainer:
@@ -463,12 +467,12 @@ def _build_callbacks(
 def _run_eat_signal_diagnostic(
     trainer: Seq2SeqTrainer,
     diagnostic_config: dict[str, Any] | None,
+    model_config: dict[str, Any],
 ) -> None:
     """Calculate and persist r_h for the best model after training."""
     if not diagnostic_config or not bool(diagnostic_config.get("enabled", True)):
         return
 
-    model_config = config["model"]
     side = (
         "decoder"
         if bool(model_config.get("modify_decoder_self_attention", True))

@@ -1,4 +1,6 @@
 import csv
+import importlib
+from types import SimpleNamespace
 
 import pytest
 import torch
@@ -97,3 +99,39 @@ def test_decoder_probability_compose_signal_measures_probability_delta() -> None
 def test_decoder_signal_rejects_invalid_batch_limit() -> None:
     with pytest.raises(ValueError, match="at least 1"):
         calculate_decoder_eat_signal(torch.nn.Linear(1, 1), [], max_batches=0)
+
+
+def test_post_training_signal_uses_explicit_decoder_model_config(
+    monkeypatch, tmp_path
+) -> None:
+    train_module = importlib.import_module("eat_bart.training.train")
+    captured = {}
+
+    def fake_calculate(**kwargs):
+        captured.update(kwargs)
+        return ([{"side": kwargs["side"]}], {"overall_r_h": 0.25})
+
+    output_path = tmp_path / "decoder_signal.csv"
+    monkeypatch.setattr(train_module, "calculate_eat_signal", fake_calculate)
+    monkeypatch.setattr(
+        train_module,
+        "write_eat_signal_csv",
+        lambda path, rows: output_path,
+    )
+    trainer = SimpleNamespace(
+        model=object(),
+        get_eval_dataloader=lambda: ["validation-batch"],
+    )
+
+    train_module._run_eat_signal_diagnostic(
+        trainer,
+        {"enabled": True, "output_path": str(output_path), "max_batches": 3},
+        {
+            "modify_encoder_self_attention": False,
+            "modify_decoder_self_attention": True,
+        },
+    )
+
+    assert captured["side"] == "decoder"
+    assert captured["max_batches"] == 3
+    assert captured["dataloader"] == ["validation-batch"]
